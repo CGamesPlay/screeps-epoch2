@@ -1,0 +1,4 @@
+dist
+.screeps-multimeter.history
+node_modules/
+screeps-multimeter.json

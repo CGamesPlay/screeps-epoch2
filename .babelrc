@@ -1,0 +1,4 @@
+{
+  plugins: [ "transform-flow-strip-types", "check-es2015-constants" ],
+  presets: [ "es2015" ]
+}
