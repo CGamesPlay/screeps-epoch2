@@ -22,11 +22,14 @@
     "grunt-screeps": "^1.3.0",
     "grunt-webpack": "^3.0.2",
     "lodash": "3.10.1",
+    "screeps-regenerator-preset": "^0.9.6",
+    "screeps-regenerator-runtime": "^0.10.1",
     "webpack": "^3.3.0"
   },
   "jest": {
     "setupFiles": [
-      "./src/__mocks__/screeps.js"
+      "./src/__mocks__/screeps.js",
+      "screeps-regenerator-runtime/runtime"
     ]
   }
 }

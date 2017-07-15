@@ -1,4 +1,4 @@
 {
   plugins: [ "transform-flow-strip-types", "check-es2015-constants" ],
-  presets: [ "es2015" ]
+  presets: [ "es2015", "screeps-regenerator-preset" ]
 }
