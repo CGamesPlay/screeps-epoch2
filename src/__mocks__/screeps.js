@@ -1,8 +1,8 @@
 // Globally import lodash
-module.exports = global._ = require.requireActual('lodash');
+module.exports = global._ = require.requireActual("lodash");
 
 var mockTerrain = {
-  "shapes":
+  shapes:
     "..................................................\n" +
     "..................................................\n" +
     "..................................................\n" +
@@ -54,7 +54,7 @@ var mockTerrain = {
     "..................................................\n" +
     "..................................................\n",
 
-  "W15S28":
+  W15S28:
     "##################################################\n" +
     "##################################################\n" +
     "##################################################\n" +
@@ -106,7 +106,7 @@ var mockTerrain = {
     "####################################...........###\n" +
     "####################################...........###\n",
 
-  "W16S28":
+  W16S28:
     "###############..........................#########\n" +
     "##############................................####\n" +
     "..##...##..##....................##............###\n" +
@@ -168,15 +168,15 @@ var map = {
     }
     if (roomName in mockTerrain) {
       let c = mockTerrain[roomName][y * 51 + x];
-      return c == "#" ? "wall" : c == "~" ? "swamp" : "plain"
+      return c == "#" ? "wall" : c == "~" ? "swamp" : "plain";
     } else {
       return "plain";
     }
-  }
+  },
 };
 
 global.Game = {
-  map
+  map,
 };
 
 global.RoomPosition = class RoomPosition {
@@ -186,26 +186,24 @@ global.RoomPosition = class RoomPosition {
     this.roomName = roomName;
   }
 
-  toString() { return `[room ${this.roomName} pos ${this.x},${this.y}]`; }
+  toString() {
+    return `[room ${this.roomName} pos ${this.x},${this.y}]`;
+  }
 };
 
-global.Room = class Room {
-};
+global.Room = class Room {};
 
-global.Flag = class Flag {
-};
+global.RoomObject = class RoomObject {};
 
-global.Source = class Source {
-};
+global.Flag = class Flag extends RoomObject {};
 
-global.Structure = class Structure {
-};
+global.Source = class Source extends RoomObject {};
 
-global.StructureSpawn = global.Spawn = class StructureSpawn extends Structure {
-};
+global.Structure = class Structure extends RoomObject {};
 
-global.Creep = class Creep {
-};
+global.StructureSpawn = global.Spawn = class StructureSpawn extends Structure {};
+
+global.Creep = class Creep extends RoomObject {};
 
 global.STRUCTURE_SPAWN = "spawn";
 global.STRUCTURE_EXTENSION = "extension";
