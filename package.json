@@ -4,8 +4,9 @@
   "description": "Second major iteration of Screeps OS",
   "main": "index.js",
   "scripts": {
-    "test": "jest",
-    "deploy": "grunt"
+    "deploy": "grunt",
+    "online-test": "grunt online-test",
+    "test": "jest"
   },
   "author": "Ryan Patterson <ry@cgamesplay.com> (http://cgamesplay.com/)",
   "private": true,
@@ -20,6 +21,7 @@
     "grunt": "^1.0.1",
     "grunt-screeps": "^1.3.0",
     "grunt-webpack": "^3.0.2",
+    "immutability-helper": "^2.3.0",
     "lodash": "3.10.1",
     "screeps-regenerator-preset": "^0.9.6",
     "screeps-regenerator-runtime": "^0.10.1",

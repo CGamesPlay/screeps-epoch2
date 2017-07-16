@@ -1,5 +1,6 @@
 import { expect } from "chai";
-import { isAvailable } from "../Marshal";
+
+import Marshal, { isAvailable } from "../Marshal";
 
 function* spawnCreep() {
   let spawn = Game.spawns[Object.keys(Game.spawns)[0]];
@@ -36,7 +37,7 @@ function* testRoomObjects() {
   expect(() => creep.pos).to.throw(/is not available/);
 }
 
-export default function*() {
+function* runTests() {
   console.log("Starting test suite");
 
   const tests = [testRoomObjects];
@@ -56,3 +57,27 @@ export default function*() {
     yield null;
   }
 }
+
+export const loop = () => {
+  var marshal, thread;
+  try {
+    Memory.heap = Memory.heap || {};
+    marshal = new Marshal(Memory.heap);
+    if (Memory.thread) {
+      thread = marshal.deserialize(Memory.thread);
+    }
+  } finally {
+    delete Memory.heap;
+    delete Memory.thread;
+  }
+
+  if (!thread) {
+    thread = main();
+  }
+
+  let result = thread.next();
+  if (!result.done) {
+    Memory.thread = marshal.serialize(thread);
+    Memory.heap = marshal.heap;
+  }
+};
