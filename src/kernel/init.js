@@ -1,5 +1,5 @@
 import Marshal from "./Marshal";
-import main from "./main";
+import main from "../main";
 
 export const loop = () => {
   var marshal, thread;

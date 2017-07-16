@@ -2,7 +2,7 @@ const path = require("path");
 
 module.exports = {
   target: "node",
-  entry: [ "screeps-regenerator-runtime/runtime", "./src/init.js" ],
+  entry: ["screeps-regenerator-runtime/runtime", "./src/kernel/init.js"],
   output: {
     path: path.join(__dirname, "dist"),
     filename: "main.js",

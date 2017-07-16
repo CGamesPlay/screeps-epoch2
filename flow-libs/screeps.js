@@ -220,6 +220,8 @@ declare class StructureSpawn extends OwnedStructure {
   memory: Object;
   name: string;
   spawning: ?{ name: string, needTime: number, remainingTime: number };
+
+  createCreep(body: Array<BodyPartType>, name: ?string, memory: any): string|number;
 }
 
 declare class StructureStorage extends OwnedStructure {
