@@ -153,7 +153,7 @@ declare module 'lodash' {
     // Collection
     // alias of _.some
     any<T>(array: ?Array<T>, predicate?: Predicate<T>): bool;
-    any<A, T: {[id: string]: A}>(object?: ?T, predicate?: OPredicate<A, T>): bool;
+    any<A, T: {[id: any]: A}>(object?: ?T, predicate?: OPredicate<A, T>): bool;
     // alias of _.includes
     contains<T>(array: ?Array<T>, value: T, fromIndex?: number): bool;
     contains<T: Object>(object: T, value: any, fromIndex?: number): bool;
