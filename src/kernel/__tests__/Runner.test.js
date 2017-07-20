@@ -7,6 +7,10 @@ function* genIdentity(param) {
   return param;
 }
 
+function* genError(message) {
+  throw new Error(message);
+}
+
 function* genNoOps() {
   yield null;
   yield 1;
@@ -33,6 +37,11 @@ function* genSpawn(actual) {
 function* genCall(actual) {
   actual.push(yield call(identity, "sync identity"));
   actual.push(yield call(genIdentity, "gen identity"));
+  try {
+    yield call(genError, "uh oh");
+  } catch (ex) {
+    actual.push(`Error caught: ${ex.message}`);
+  }
 }
 
 function* genChannelBasic(actual) {
@@ -86,6 +95,12 @@ function* genAllDelayedChild(lock, chanA, chanB) {
   chanB.notify("valueD");
 }
 
+function* genAllNesting() {
+  yield all({
+    foo: all(["bar", "baz"]),
+  });
+}
+
 const run = gen => {
   const runner = new Runner();
   var steps = 0;
@@ -126,7 +141,11 @@ describe("Runner", () => {
   it("handles call effects", () => {
     const actual = [];
     run(genCall(actual));
-    expect(actual).toEqual(["sync identity", "gen identity"]);
+    expect(actual).toEqual([
+      "sync identity",
+      "gen identity",
+      "Error caught: uh oh",
+    ]);
   });
 
   describe("all", () => {
@@ -135,6 +154,9 @@ describe("Runner", () => {
     });
     it("handles delayed values", () => {
       run(genAllDelayed());
+    });
+    it("prevents nesting", () => {
+      expect(() => run(genAllNesting())).toThrow("Cannot nest all / race");
     });
   });
 

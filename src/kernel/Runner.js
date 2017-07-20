@@ -122,36 +122,6 @@ function* genIdentity(x: any) {
   return x;
 }
 
-const notifyTask = (
-  task: Task,
-  handle: WaitHandle,
-  error: ?Error,
-  result: any,
-) => {
-  if (error) {
-    taskThrow(task, error);
-    if (task.waitHandles && task.waitHandles.length > 1) {
-      throw new Error("Clear all other joins");
-    }
-  } else if (task.waitMode === SINGLE) {
-    taskNext(task, result);
-  } else if (task.waitMode === ALL_ARRAY || task.waitMode === ALL_OBJECT) {
-    handle.result = result;
-    const handles = task.waitHandles;
-    if (!handles) {
-      throw new Error("Invalid waitHandles");
-    } else if (handles.every(h => "result" in h)) {
-      result = handles.reduce((result: any, h) => {
-        result[h.key] = h.result;
-        return result;
-      }, task.waitMode === ALL_ARRAY ? [] : {});
-      taskNext(task, result);
-    }
-  } else {
-    throw new Error("Invalid waitMode");
-  }
-};
-
 export default class Runner {
   nextId: number;
   tasks: { [key: number]: Task };
@@ -239,7 +209,7 @@ export default class Runner {
       if (!handle) {
         throw new Error("Internal error: invalid join");
       }
-      notifyTask(target, handle, joined.error, joined.result);
+      this._notifyTask(target, handle, joined.error, joined.result);
     });
   }
 
@@ -255,7 +225,48 @@ export default class Runner {
       throw new Error("Internal error: invalid wait");
     }
     const value = channel.buffer.shift();
-    notifyTask(target, handle, null, value);
+    this._notifyTask(target, handle, null, value);
+  }
+
+  _notifyTask(task: Task, handle: WaitHandle, error: ?Error, result: any) {
+    if (error) {
+      taskThrow(task, error);
+      if (task.waitHandles && task.waitHandles.length > 1) {
+        this._clearWaits(task, task.waitHandles);
+        delete task.waitHandles;
+      }
+    } else if (task.waitMode === SINGLE) {
+      taskNext(task, result);
+      delete task.waitHandles;
+    } else if (task.waitMode === ALL_ARRAY || task.waitMode === ALL_OBJECT) {
+      handle.result = result;
+      const handles = task.waitHandles;
+      if (!handles) {
+        throw new Error("Invalid waitHandles");
+      } else if (handles.every(h => "result" in h)) {
+        result = handles.reduce((result: any, h) => {
+          result[h.key] = h.result;
+          return result;
+        }, task.waitMode === ALL_ARRAY ? [] : {});
+        taskNext(task, result);
+      }
+    } else {
+      throw new Error("Invalid waitMode");
+    }
+  }
+
+  _clearWaits(task: Task, handles: Array<WaitHandle>) {
+    handles.forEach(handle => {
+      if (handle.taskId) {
+        let target = this.tasks[handle.taskId];
+        if (!target) {
+          throw new Error("Invalid taskId in WaitHandle");
+        }
+        _.remove(target.joinedIds, id => id === task.id);
+      } else {
+        throw new Error("Invalid WaitHandle");
+      }
+    });
   }
 
   _applyEffect(task: Task, value: any, cb: EffectResultCallback) {
@@ -394,7 +405,7 @@ export default class Runner {
       return !aborted;
     });
     if (aborted) {
-      throw new Error("Need to clean up handles");
+      this._clearWaits(task, handles);
       return;
     } else if (immediate) {
       const result = handles.reduce((result: any, handle) => {
