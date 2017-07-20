@@ -2,7 +2,7 @@
 
 import _ from "lodash";
 
-import { SPAWN, JOIN, CALL } from "./effects";
+import { SPAWN, JOIN, CALL, CREATE_CHANNEL, WAIT } from "./effects";
 import type { CallEffect } from "./effects";
 
 type Saga = Generator<any, void, any>;
@@ -24,6 +24,7 @@ type WaitMode = typeof SINGLE | typeof ALL | typeof RACE;
 
 type WaitHandle = {
   taskId?: number,
+  channel?: Channel,
   key: string | number,
   result?: any,
 };
@@ -44,15 +45,7 @@ type Task = {
 const taskStart = ["next", void 0];
 const runnerSymbol = Symbol("Runner");
 const taskSymbol = Symbol("Task");
-
-const taskNext = (task: Task, value: any) =>
-  Object.assign(task, { state: RUNNING, next: ["next", value] });
-const taskThrow = (task: Task, error: Error) =>
-  Object.assign(task, { state: RUNNING, next: ["throw", error] });
-
-function* genIdentity(x: any) {
-  return x;
-}
+const waitListSymbol = Symbol("WaitList");
 
 class TaskHandle {
   constructor(runner: Runner, task: Task) {
@@ -72,6 +65,53 @@ class TaskHandle {
 }
 
 export { TaskHandle as Task };
+
+export class Channel {
+  buffer: Array<any>;
+
+  constructor(runner: Runner) {
+    Object.defineProperties(this, {
+      [runnerSymbol]: { value: runner },
+      [waitListSymbol]: { value: [] },
+    });
+    this.buffer = [];
+  }
+
+  notify(value: any) {
+    this.buffer.push(value);
+    ((this: any)[runnerSymbol]: Runner)._notifyChannel(this);
+  }
+}
+
+const taskNext = (task: Task, value: any) =>
+  Object.assign(task, { state: RUNNING, next: ["next", value] });
+const taskThrow = (task: Task, error: Error) =>
+  Object.assign(task, { state: RUNNING, next: ["throw", error] });
+
+function* genIdentity(x: any) {
+  return x;
+}
+
+const notifyTask = (
+  task: Task,
+  handle: WaitHandle,
+  error: ?Error,
+  result: any,
+) => {
+  if (error) {
+    taskThrow(task, error);
+    if (task.waitHandles && task.waitHandles.length > 1) {
+      throw new Error("Clear all other joins");
+    }
+  } else {
+    if (task.waitMode === SINGLE) {
+      taskNext(task, result);
+    } else {
+      handle.result = result;
+      throw new Error("Unsupported join mode");
+    }
+  }
+};
 
 export default class Runner {
   nextId: number;
@@ -142,6 +182,10 @@ export default class Runner {
           this._applyJoin(task, value);
         } else if (value.type == CALL) {
           this._applyCall(task, value);
+        } else if (value.type == CREATE_CHANNEL) {
+          this._applyCreateChannel(task, value);
+        } else if (value.type == WAIT) {
+          this._applyWait(task, value);
         } else {
           taskNext(task, value);
         }
@@ -158,26 +202,30 @@ export default class Runner {
       if (!target || target.state !== WAITING) {
         throw new Error("Internal error: invalid joinedIds");
       }
-      let allHandles = target.waitHandles;
-      let handleIndex = _.findIndex(allHandles, { taskId: joined.id });
-      if (target.state !== WAITING || !allHandles || handleIndex === -1) {
+      const allHandles = target.waitHandles;
+      const handleIndex = _.findIndex(allHandles, { taskId: joined.id });
+      if (!allHandles || handleIndex === -1) {
         throw new Error("Internal error: invalid join");
       }
-      let handle = allHandles[handleIndex];
-      if (joined.error) {
-        taskThrow(target, joined.error);
-        if (allHandles.length > 1) {
-          throw new Error("Clear all other joins");
-        }
-      } else {
-        if (target.waitMode === SINGLE) {
-          taskNext(target, joined.result);
-        } else {
-          handle.result = joined.result;
-          throw new Error("Unsupported join mode");
-        }
-      }
+      const handle = allHandles[handleIndex];
+      notifyTask(target, handle, joined.error, joined.result);
     });
+  }
+
+  _notifyChannel(channel: Channel) {
+    const id = ((channel: any)[waitListSymbol]: Array<number>).shift();
+    const target = this.tasks[id];
+    if (!target || target.state !== WAITING || channel.buffer.length === 0) {
+      throw new Error("Internal error: invalid channel waitList");
+    }
+    const allHandles = target.waitHandles;
+    const handleIndex = _.findIndex(allHandles, { channel: channel });
+    if (!allHandles || handleIndex === -1) {
+      throw new Error("Internal error: invalid join");
+    }
+    const handle = allHandles[handleIndex];
+    const value = channel.buffer.shift();
+    notifyTask(target, handle, null, value);
   }
 
   _applySpawn(task: Task, value: CallEffect) {
@@ -256,6 +304,29 @@ export default class Runner {
       return this._applyJoin(task, { task: result });
     } else {
       return taskNext(task, result);
+    }
+  }
+
+  _applyCreateChannel(task: Task, value: void) {
+    return taskNext(task, new Channel(this));
+  }
+
+  _applyWait(task: Task, { channel }: any) {
+    if (!(channel instanceof Channel)) {
+      return taskThrow(task, new Error("Invalid channel"));
+    } else if (channel[runnerSymbol] !== this) {
+      return taskThrow(task, new Error("Channel is from different Runner"));
+    }
+    if (channel.buffer.length > 0) {
+      let result = channel.buffer.shift();
+      return taskNext(task, result);
+    } else {
+      Object.assign(task, {
+        state: WAITING,
+        waitHandles: [{ channel: channel, key: 0 }],
+        waitMode: SINGLE,
+      });
+      ((channel: any)[waitListSymbol]: Array<number>).push(task.id);
     }
   }
 }

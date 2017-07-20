@@ -1,5 +1,5 @@
 import Runner from "../Runner";
-import { spawn, join, call } from "../effects";
+import { spawn, join, call, createChannel, wait } from "../effects";
 
 const identity = x => x;
 
@@ -33,6 +33,22 @@ function* genSpawn(actual) {
 function* genCall(actual) {
   actual.push(yield call(identity, "sync identity"));
   actual.push(yield call(genIdentity, "gen identity"));
+}
+
+function* genChannelBasic(actual) {
+  const chan = yield createChannel();
+  const task = yield spawn(genChannelBasicChild, actual, chan);
+  actual.push("waiting on value");
+  let value = yield wait(chan);
+  actual.push(`received ${value}`);
+  value = yield wait(chan);
+  actual.push(`received ${value}`);
+}
+
+function* genChannelBasicChild(actual, chan) {
+  actual.push("Putting value");
+  chan.notify(1234);
+  chan.notify(5678);
 }
 
 const run = gen => {
@@ -78,5 +94,18 @@ describe("Runner", () => {
     const actual = [];
     run(genCall(actual));
     expect(actual).toEqual(["sync identity", "gen identity"]);
+  });
+
+  describe("Channels", () => {
+    it("can pass values", () => {
+      const actual = [];
+      run(genChannelBasic(actual));
+      expect(actual).toEqual([
+        "waiting on value",
+        "Putting value",
+        "received 1234",
+        "received 5678",
+      ]);
+    });
   });
 });
