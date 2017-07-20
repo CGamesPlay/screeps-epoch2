@@ -2,7 +2,16 @@
 
 import _ from "lodash";
 
-import { SPAWN, JOIN, CALL, CREATE_CHANNEL, WAIT } from "./effects";
+import {
+  SPAWN,
+  JOIN,
+  CALL,
+  CREATE_CHANNEL,
+  WAIT,
+  RACE,
+  ALL,
+  all,
+} from "./effects";
 import type { CallEffect } from "./effects";
 
 type Saga = Generator<any, void, any>;
@@ -17,16 +26,26 @@ type TaskState =
   | typeof CANCELING
   | typeof DONE;
 
-const SINGLE = "single";
-const ALL = "all";
-const RACE = "race";
-type WaitMode = typeof SINGLE | typeof ALL | typeof RACE;
+const SINGLE = "s";
+const ALL_ARRAY = "aa";
+const ALL_OBJECT = "ao";
+const RACE_ARRAY = "ra";
+const RACE_OBJECT = "ro";
+type WaitMode =
+  | typeof SINGLE
+  | typeof ALL_ARRAY
+  | typeof ALL_OBJECT
+  | typeof RACE_ARRAY
+  | typeof RACE_OBJECT;
 
-type WaitHandle = {
+type WaitHandlePre = {
   taskId?: number,
   channel?: Channel,
-  key: string | number,
   result?: any,
+};
+
+type WaitHandle = WaitHandlePre & {
+  key: string | number,
 };
 
 type Task = {
@@ -41,6 +60,12 @@ type Task = {
   waitHandles?: Array<WaitHandle>,
   waitMode?: WaitMode,
 };
+
+type EffectResultCallback = (
+  next: any,
+  error: ?Error,
+  wait: ?WaitHandlePre,
+) => void;
 
 const taskStart = ["next", void 0];
 const runnerSymbol = Symbol("Runner");
@@ -87,6 +112,11 @@ const taskNext = (task: Task, value: any) =>
   Object.assign(task, { state: RUNNING, next: ["next", value] });
 const taskThrow = (task: Task, error: Error) =>
   Object.assign(task, { state: RUNNING, next: ["throw", error] });
+const taskWait = (
+  task: Task,
+  waitMode: WaitMode,
+  waitHandles: Array<WaitHandle>,
+) => Object.assign(task, { state: WAITING, waitHandles, waitMode });
 
 function* genIdentity(x: any) {
   return x;
@@ -103,13 +133,22 @@ const notifyTask = (
     if (task.waitHandles && task.waitHandles.length > 1) {
       throw new Error("Clear all other joins");
     }
-  } else {
-    if (task.waitMode === SINGLE) {
+  } else if (task.waitMode === SINGLE) {
+    taskNext(task, result);
+  } else if (task.waitMode === ALL_ARRAY || task.waitMode === ALL_OBJECT) {
+    handle.result = result;
+    const handles = task.waitHandles;
+    if (!handles) {
+      throw new Error("Invalid waitHandles");
+    } else if (handles.every(h => "result" in h)) {
+      result = handles.reduce((result: any, h) => {
+        result[h.key] = h.result;
+        return result;
+      }, task.waitMode === ALL_ARRAY ? [] : {});
       taskNext(task, result);
-    } else {
-      handle.result = result;
-      throw new Error("Unsupported join mode");
     }
+  } else {
+    throw new Error("Invalid waitMode");
   }
 };
 
@@ -161,13 +200,13 @@ export default class Runner {
   _stepTask(task: Task): boolean {
     var progressed = false;
     while (true) {
-      var done,
+      let done,
         value,
         next = task.next;
       if (!next || task.state !== RUNNING) break;
       progressed = true;
       try {
-        var [method, param] = next;
+        let [method, param] = next;
         task.next = void 0;
         ({ done, value } = (task.generator: any)[method](param));
       } catch (err) {
@@ -175,22 +214,16 @@ export default class Runner {
       }
       if (done) {
         Object.assign(task, { state: DONE, result: value });
-      } else if (value) {
-        if (value.type == SPAWN) {
-          this._applySpawn(task, value);
-        } else if (value.type == JOIN) {
-          this._applyJoin(task, value);
-        } else if (value.type == CALL) {
-          this._applyCall(task, value);
-        } else if (value.type == CREATE_CHANNEL) {
-          this._applyCreateChannel(task, value);
-        } else if (value.type == WAIT) {
-          this._applyWait(task, value);
-        } else {
-          taskNext(task, value);
-        }
       } else {
-        taskNext(task, value);
+        this._applyEffect(task, value, (next, error, wait) => {
+          if (error) {
+            taskThrow(task, error);
+          } else if (wait) {
+            taskWait(task, SINGLE, [(wait: any)]);
+          } else {
+            taskNext(task, next);
+          }
+        });
       }
     }
     return progressed;
@@ -202,131 +235,175 @@ export default class Runner {
       if (!target || target.state !== WAITING) {
         throw new Error("Internal error: invalid joinedIds");
       }
-      const allHandles = target.waitHandles;
-      const handleIndex = _.findIndex(allHandles, { taskId: joined.id });
-      if (!allHandles || handleIndex === -1) {
+      const handle = _.find(target.waitHandles, { taskId: joined.id });
+      if (!handle) {
         throw new Error("Internal error: invalid join");
       }
-      const handle = allHandles[handleIndex];
       notifyTask(target, handle, joined.error, joined.result);
     });
   }
 
   _notifyChannel(channel: Channel) {
     const id = ((channel: any)[waitListSymbol]: Array<number>).shift();
+    if (!id) return;
     const target = this.tasks[id];
     if (!target || target.state !== WAITING || channel.buffer.length === 0) {
       throw new Error("Internal error: invalid channel waitList");
     }
-    const allHandles = target.waitHandles;
-    const handleIndex = _.findIndex(allHandles, { channel: channel });
-    if (!allHandles || handleIndex === -1) {
-      throw new Error("Internal error: invalid join");
+    const handle = _.find(target.waitHandles, { channel: channel });
+    if (!handle) {
+      throw new Error("Internal error: invalid wait");
     }
-    const handle = allHandles[handleIndex];
     const value = channel.buffer.shift();
     notifyTask(target, handle, null, value);
   }
 
-  _applySpawn(task: Task, value: CallEffect) {
+  _applyEffect(task: Task, value: any, cb: EffectResultCallback) {
+    if (Array.isArray(value)) {
+      value = (all(value): any);
+    }
+    if (!value) {
+      cb(value);
+    } else if (value.type === SPAWN) {
+      this._applySpawn(task, value, cb);
+    } else if (value.type === JOIN) {
+      this._applyJoin(task, value, cb);
+    } else if (value.type === CALL) {
+      this._applyCall(task, value, cb);
+    } else if (value.type === CREATE_CHANNEL) {
+      this._applyCreateChannel(task, value, cb);
+    } else if (value.type === WAIT) {
+      this._applyWait(task, value, cb);
+    } else if (value.type === ALL) {
+      this._applyAll(task, value, cb);
+    } else {
+      cb(value);
+    }
+  }
+
+  _applySpawn(task: Task, value: CallEffect, cb: EffectResultCallback) {
     var func = value.func,
       result;
     if (typeof func === "string") {
       if (!value.context) {
-        return taskThrow(
-          task,
-          new Error("String function provided with no context"),
-        );
+        return cb(null, new Error("String function provided with no context"));
       } else {
         func = value.context[func];
       }
     }
     if (typeof func !== "function") {
-      return taskThrow(task, new Error("Provided function is not callable"));
+      return cb(null, new Error("Provided function is not callable"));
     }
     try {
       result = func.apply(value.context, value.args);
     } catch (err) {
-      return taskThrow(task, err);
+      return cb(null, err);
     }
     if (result && typeof result.next === "function") {
       result = this.run(result);
     } else {
       result = this.run(genIdentity(result));
     }
-    return taskNext(task, result);
+    return cb(result);
   }
 
-  _applyJoin(task: Task, { task: target }: any) {
+  _applyJoin(task: Task, { task: target }: any, cb: EffectResultCallback) {
     if (!(target instanceof TaskHandle)) {
-      return taskThrow(task, new Error("Invalid join target"));
+      return cb(null, new Error("Invalid join target"));
     } else if (target[runnerSymbol] !== this) {
-      return taskThrow(task, new Error("Join target is from different Runner"));
+      return cb(null, new Error("Join target is from different Runner"));
     }
     target = (target[taskSymbol]: Task);
     if (target.error) {
-      return taskThrow(task, target.error);
+      return cb(null, target.error);
     } else if (target.result) {
-      return taskNext(task, target.result);
+      return cb(target.result);
     } else {
-      Object.assign(task, {
-        state: WAITING,
-        waitHandles: [{ taskId: target.id, key: 0 }],
-        waitMode: SINGLE,
-      });
       target.joinedIds.push(task.id);
+      return cb(null, null, { taskId: target.id });
     }
   }
 
-  _applyCall(task: Task, value: CallEffect) {
+  _applyCall(task: Task, value: CallEffect, cb: EffectResultCallback) {
     var func = value.func,
       result;
     if (typeof func === "string") {
       if (!value.context) {
-        return taskThrow(
-          task,
-          new Error("String function provided with no context"),
-        );
+        return cb(null, new Error("String function provided with no context"));
       } else {
         func = value.context[func];
       }
     }
     if (typeof func !== "function") {
-      return taskThrow(task, new Error("Provided function is not callable"));
+      return cb(null, new Error("Provided function is not callable"));
     }
     try {
       result = func.apply(value.context, value.args);
     } catch (err) {
-      return taskThrow(task, err);
+      return cb(null, err);
     }
     if (result && typeof result.next === "function") {
       result = this.run(result);
-      return this._applyJoin(task, { task: result });
+      return this._applyJoin(task, { task: result }, cb);
     } else {
-      return taskNext(task, result);
+      return cb(result);
     }
   }
 
-  _applyCreateChannel(task: Task, value: void) {
-    return taskNext(task, new Channel(this));
+  _applyCreateChannel(task: Task, value: void, cb: EffectResultCallback) {
+    return cb(new Channel(this));
   }
 
-  _applyWait(task: Task, { channel }: any) {
+  _applyWait(task: Task, { channel }: any, cb: EffectResultCallback) {
     if (!(channel instanceof Channel)) {
-      return taskThrow(task, new Error("Invalid channel"));
+      return cb(null, new Error("Invalid channel"));
     } else if (channel[runnerSymbol] !== this) {
-      return taskThrow(task, new Error("Channel is from different Runner"));
+      return cb(null, new Error("Channel is from different Runner"));
     }
     if (channel.buffer.length > 0) {
       let result = channel.buffer.shift();
-      return taskNext(task, result);
+      return cb(result);
     } else {
-      Object.assign(task, {
-        state: WAITING,
-        waitHandles: [{ channel: channel, key: 0 }],
-        waitMode: SINGLE,
-      });
       ((channel: any)[waitListSymbol]: Array<number>).push(task.id);
+      return cb(null, null, { channel });
+    }
+  }
+
+  _applyAll(task: Task, { values }: any, cb: EffectResultCallback) {
+    let aborted = false,
+      immediate = true,
+      handles = [];
+    const asArray = Array.isArray(values);
+    _.forEach(values, (value, key) => {
+      if (value && (value.type === ALL || value.type === RACE)) {
+        aborted = true;
+        cb(null, new Error("Cannot nest all / race"));
+      } else {
+        this._applyEffect(task, value, (next, error, wait) => {
+          if (error) {
+            aborted = true;
+            cb(null, error);
+          } else if (wait) {
+            immediate = false;
+            handles.push(Object.assign(({ key }: any), wait));
+          } else {
+            handles.push({ key, result: next });
+          }
+        });
+      }
+      return !aborted;
+    });
+    if (aborted) {
+      throw new Error("Need to clean up handles");
+      return;
+    } else if (immediate) {
+      const result = handles.reduce((result: any, handle) => {
+        result[handle.key] = handle.result;
+        return result;
+      }, asArray ? Array(values.length) : {});
+      cb(result);
+    } else {
+      taskWait(task, asArray ? ALL_ARRAY : ALL_OBJECT, handles);
     }
   }
 }

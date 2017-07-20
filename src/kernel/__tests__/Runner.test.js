@@ -1,5 +1,5 @@
 import Runner from "../Runner";
-import { spawn, join, call, createChannel, wait } from "../effects";
+import { spawn, join, call, createChannel, wait, all } from "../effects";
 
 const identity = x => x;
 
@@ -51,6 +51,41 @@ function* genChannelBasicChild(actual, chan) {
   chan.notify(5678);
 }
 
+function* genAllImmediate() {
+  const chanA = yield createChannel(),
+    chanB = yield createChannel();
+  chanA.notify("valueA");
+  chanB.notify("valueB");
+  let result = yield all({ chanA: wait(chanA), chanB: wait(chanB) });
+  expect(result).toEqual({ chanA: "valueA", chanB: "valueB" });
+  chanA.notify("valueC");
+  chanB.notify("valueD");
+  result = yield all(wait(chanA), wait(chanB));
+  expect(result).toEqual(["valueC", "valueD"]);
+}
+
+function* genAllDelayed() {
+  const lock = yield createChannel(),
+    chanA = yield createChannel(),
+    chanB = yield createChannel();
+  yield spawn(genAllDelayedChild, lock, chanA, chanB);
+  lock.notify();
+  let result = yield all({ chanA: wait(chanA), chanB: wait(chanB) });
+  expect(result).toEqual({ chanA: "valueA", chanB: "valueB" });
+  lock.notify();
+  result = yield all(wait(chanA), wait(chanB));
+  expect(result).toEqual(["valueC", "valueD"]);
+}
+
+function* genAllDelayedChild(lock, chanA, chanB) {
+  yield wait(lock);
+  chanA.notify("valueA");
+  chanB.notify("valueB");
+  yield wait(lock);
+  chanA.notify("valueC");
+  chanB.notify("valueD");
+}
+
 const run = gen => {
   const runner = new Runner();
   var steps = 0;
@@ -60,9 +95,7 @@ const run = gen => {
     if (steps > 100) {
       throw new Error("Timed out after 100 steps");
     }
-    if (!runner.step()) {
-      throw new Error("Deadlocked");
-    }
+    runner.step();
   }
   if (task.error()) {
     throw task.error();
@@ -94,6 +127,15 @@ describe("Runner", () => {
     const actual = [];
     run(genCall(actual));
     expect(actual).toEqual(["sync identity", "gen identity"]);
+  });
+
+  describe("all", () => {
+    it("handles immediately available values", () => {
+      run(genAllImmediate());
+    });
+    it("handles delayed values", () => {
+      run(genAllDelayed());
+    });
   });
 
   describe("Channels", () => {
