@@ -12,26 +12,19 @@ function* genError(message) {
 }
 
 function* genNoOps() {
-  yield null;
-  yield 1;
+  let result = yield null;
+  expect(result).toBe(null);
+  result = yield 1;
+  expect(result).toBe(1);
+  const obj = { foo: "bar" };
+  result = yield obj;
+  expect(result).toBe(obj);
 }
 
-function* genSpawnChild(actual) {
-  actual.push("genSpawnChild start");
-  for (var i = 1; i <= 2; i++) {
-    actual.push(`genSpawnChild ${i}`);
-    yield null;
-  }
-  actual.push("genSpawnChild finish");
-  return "finish value";
-}
-
-function* genSpawn(actual) {
-  actual.push("genSpawn start");
-  const task = yield spawn(genSpawnChild, actual);
-  actual.push("genSpawn continue");
+function* genSpawn() {
+  const task = yield spawn(genIdentity, "result");
   const result = yield join(task);
-  actual.push("genSpawn joined with " + result);
+  expect(result).toEqual("result");
 }
 
 function* genCall(actual) {
@@ -42,22 +35,6 @@ function* genCall(actual) {
   } catch (ex) {
     actual.push(`Error caught: ${ex.message}`);
   }
-}
-
-function* genChannelBasic(actual) {
-  const chan = yield createChannel();
-  const task = yield spawn(genChannelBasicChild, actual, chan);
-  actual.push("waiting on value");
-  let value = yield wait(chan);
-  actual.push(`received ${value}`);
-  value = yield wait(chan);
-  actual.push(`received ${value}`);
-}
-
-function* genChannelBasicChild(actual, chan) {
-  actual.push("Putting value");
-  chan.notify(1234);
-  chan.notify(5678);
 }
 
 function* genAllImmediate() {
@@ -148,6 +125,20 @@ function* genRaceNested() {
   });
 }
 
+function* genChannelBasic() {
+  const chan = yield createChannel();
+  const task = yield spawn(genChannelBasicChild, chan);
+  let value = yield wait(chan);
+  expect(value).toEqual(1234);
+  value = yield wait(chan);
+  expect(value).toEqual(5678);
+}
+
+function* genChannelBasicChild(chan) {
+  chan.notify(1234);
+  chan.notify(5678);
+}
+
 const run = gen => {
   const runner = new Runner();
   var steps = 0;
@@ -172,17 +163,7 @@ describe("Runner", () => {
   });
 
   it("handles single spawn/join effects", () => {
-    const actual = [];
-    run(genSpawn(actual));
-    expect(actual).toEqual([
-      "genSpawn start",
-      "genSpawn continue",
-      "genSpawnChild start",
-      "genSpawnChild 1",
-      "genSpawnChild 2",
-      "genSpawnChild finish",
-      "genSpawn joined with finish value",
-    ]);
+    run(genSpawn());
   });
 
   it("handles call effects", () => {
@@ -219,16 +200,9 @@ describe("Runner", () => {
     });
   });
 
-  describe("Channels", () => {
-    it("can pass values", () => {
-      const actual = [];
-      run(genChannelBasic(actual));
-      expect(actual).toEqual([
-        "waiting on value",
-        "Putting value",
-        "received 1234",
-        "received 5678",
-      ]);
+  describe("Channel", () => {
+    it("passes values", () => {
+      run(genChannelBasic());
     });
   });
 });
