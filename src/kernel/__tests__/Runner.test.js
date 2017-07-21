@@ -1,5 +1,5 @@
 import Runner from "../Runner";
-import { spawn, join, call, createChannel, wait, all } from "../effects";
+import { spawn, join, call, createChannel, wait, all, race } from "../effects";
 
 const identity = x => x;
 
@@ -95,9 +95,56 @@ function* genAllDelayedChild(lock, chanA, chanB) {
   chanB.notify("valueD");
 }
 
-function* genAllNesting() {
-  yield all({
-    foo: all(["bar", "baz"]),
+function* genAllArray() {
+  const chanA = yield createChannel(),
+    chanB = yield createChannel();
+  chanA.notify("valueA");
+  chanB.notify("valueB");
+  let result = yield [wait(chanA), wait(chanB)];
+  expect(result).toEqual(["valueA", "valueB"]);
+}
+
+function* genRaceImmediate() {
+  const chanA = yield createChannel(),
+    chanB = yield createChannel();
+  chanA.notify("valueA");
+  chanB.notify("valueB");
+  let result = yield race({ chanA: wait(chanA), chanB: wait(chanB) });
+  expect(result).toEqual({ chanA: "valueA" });
+  result = yield race([wait(chanA), wait(chanB)]);
+  expect(result).toEqual([void 0, "valueB"]);
+}
+
+function* genRaceDelayed() {
+  const lock = yield createChannel(),
+    chanA = yield createChannel(),
+    chanB = yield createChannel();
+  yield spawn(genRaceDelayedChild, lock, chanA, chanB);
+  lock.notify();
+  let result = yield race({ chanA: wait(chanA), chanB: wait(chanB) });
+  expect(result).toEqual({ chanA: "valueA" });
+  lock.notify();
+  result = yield race(wait(chanA), wait(chanB));
+  expect(result).toEqual([void 0, "valueB"]);
+}
+
+function* genRaceDelayedChild(lock, chanA, chanB) {
+  yield wait(lock);
+  chanA.notify("valueA");
+  yield wait(lock);
+  chanB.notify("valueB");
+}
+
+function* genRaceNested() {
+  const result = yield all({
+    foo: race(["one", "two"]),
+    bar: all(["three", "four"]),
+    baz: ["five", "six"],
+  });
+  expect(result).toEqual({
+    foo: ["one"],
+    bar: ["three", "four"],
+    baz: ["five", "six"],
   });
 }
 
@@ -155,8 +202,20 @@ describe("Runner", () => {
     it("handles delayed values", () => {
       run(genAllDelayed());
     });
-    it("prevents nesting", () => {
-      expect(() => run(genAllNesting())).toThrow("Cannot nest all / race");
+    it("allows simple arrays", () => {
+      run(genAllArray());
+    });
+  });
+
+  describe("race", () => {
+    it("handles immediately resolved races", () => {
+      run(genRaceImmediate());
+    });
+    it("handles delayed races", () => {
+      run(genRaceDelayed());
+    });
+    it("can be nested", () => {
+      run(genRaceNested());
     });
   });
 

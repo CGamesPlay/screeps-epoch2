@@ -10,6 +10,7 @@ import {
   WAIT,
   RACE,
   ALL,
+  call,
   all,
 } from "./effects";
 import type { CallEffect } from "./effects";
@@ -118,8 +119,22 @@ const taskWait = (
   waitHandles: Array<WaitHandle>,
 ) => Object.assign(task, { state: WAITING, waitHandles, waitMode });
 
+const prepareMultiEffect = (value: any) =>
+  value && (value.type === ALL || value.type === RACE || Array.isArray(value))
+    ? call(yieldEffect, value)
+    : value;
+const prepareMultiResults = (handles: Array<WaitHandle>, asArray: boolean) =>
+  handles.reduce((result: any, handle) => {
+    result[handle.key] = handle.result;
+    return result;
+  }, asArray ? new Array(handles.length) : {});
+
 function* genIdentity(x: any) {
   return x;
+}
+
+function* yieldEffect(effect: any) {
+  return yield effect;
 }
 
 export default class Runner {
@@ -232,7 +247,7 @@ export default class Runner {
     if (error) {
       taskThrow(task, error);
       if (task.waitHandles && task.waitHandles.length > 1) {
-        this._clearWaits(task, task.waitHandles);
+        this._cancelWaits(task, task.waitHandles);
         delete task.waitHandles;
       }
     } else if (task.waitMode === SINGLE) {
@@ -242,29 +257,42 @@ export default class Runner {
       handle.result = result;
       const handles = task.waitHandles;
       if (!handles) {
-        throw new Error("Invalid waitHandles");
+        throw new Error("Internal error: invalid waitHandles");
       } else if (handles.every(h => "result" in h)) {
-        result = handles.reduce((result: any, h) => {
-          result[h.key] = h.result;
-          return result;
-        }, task.waitMode === ALL_ARRAY ? [] : {});
-        taskNext(task, result);
+        taskNext(
+          task,
+          prepareMultiResults(handles, task.waitMode === ALL_ARRAY),
+        );
+      }
+    } else if (task.waitMode === RACE_ARRAY || task.waitMode === RACE_OBJECT) {
+      handle.result = result;
+      const handles = task.waitHandles;
+      if (!handles) {
+        throw new Error("Internal error: invalid waitHandles");
+      } else {
+        this._cancelWaits(task, handles);
+        delete task.waitHandles;
+        taskNext(
+          task,
+          prepareMultiResults(handles, task.waitMode === RACE_ARRAY),
+        );
       }
     } else {
-      throw new Error("Invalid waitMode");
+      throw new Error("Internal error: invalid waitMode");
     }
   }
 
-  _clearWaits(task: Task, handles: Array<WaitHandle>) {
+  _cancelWaits(task: Task, handles: Array<WaitHandle>) {
     handles.forEach(handle => {
       if (handle.taskId) {
         let target = this.tasks[handle.taskId];
         if (!target) {
-          throw new Error("Invalid taskId in WaitHandle");
+          throw new Error("Internal error: invalid taskId in WaitHandle");
         }
         _.remove(target.joinedIds, id => id === task.id);
-      } else {
-        throw new Error("Invalid WaitHandle");
+      } else if (handle.channel) {
+        const waitList = ((handle.channel: any)[waitListSymbol]: Array<number>);
+        _.remove(waitList, id => id === task.id);
       }
     });
   }
@@ -287,6 +315,8 @@ export default class Runner {
       this._applyWait(task, value, cb);
     } else if (value.type === ALL) {
       this._applyAll(task, value, cb);
+    } else if (value.type === RACE) {
+      this._applyRace(task, value, cb);
     } else {
       cb(value);
     }
@@ -386,35 +416,57 @@ export default class Runner {
       handles = [];
     const asArray = Array.isArray(values);
     _.forEach(values, (value, key) => {
-      if (value && (value.type === ALL || value.type === RACE)) {
-        aborted = true;
-        cb(null, new Error("Cannot nest all / race"));
-      } else {
-        this._applyEffect(task, value, (next, error, wait) => {
-          if (error) {
-            aborted = true;
-            cb(null, error);
-          } else if (wait) {
-            immediate = false;
-            handles.push(Object.assign(({ key }: any), wait));
-          } else {
-            handles.push({ key, result: next });
-          }
-        });
-      }
+      value = prepareMultiEffect(value);
+      this._applyEffect(task, value, (next, error, wait) => {
+        if (error) {
+          aborted = true;
+          cb(null, error);
+        } else if (wait) {
+          immediate = false;
+          handles.push(Object.assign(({ key }: any), wait));
+        } else {
+          handles.push({ key, result: next });
+        }
+      });
       return !aborted;
     });
     if (aborted) {
-      this._clearWaits(task, handles);
+      this._cancelWaits(task, handles);
       return;
     } else if (immediate) {
-      const result = handles.reduce((result: any, handle) => {
-        result[handle.key] = handle.result;
-        return result;
-      }, asArray ? Array(values.length) : {});
-      cb(result);
+      cb(prepareMultiResults(handles, asArray));
     } else {
       taskWait(task, asArray ? ALL_ARRAY : ALL_OBJECT, handles);
+    }
+  }
+
+  _applyRace(task: Task, { values }: any, cb: EffectResultCallback) {
+    let aborted = false,
+      resolved = false,
+      handles = [];
+    const asArray = Array.isArray(values);
+    _.forEach(values, (value, key) => {
+      value = prepareMultiEffect(value);
+      this._applyEffect(task, value, (next, error, wait) => {
+        if (error) {
+          aborted = true;
+          cb(null, error);
+        } else if (wait) {
+          handles.push(Object.assign(({ key }: any), wait));
+        } else {
+          resolved = true;
+          handles.push({ key, result: next });
+        }
+      });
+      return !aborted && !resolved;
+    });
+    if (resolved) {
+      this._cancelWaits(task, handles);
+      if (!aborted) {
+        cb(prepareMultiResults(handles, asArray));
+      }
+    } else {
+      taskWait(task, asArray ? RACE_ARRAY : RACE_OBJECT, handles);
     }
   }
 }
