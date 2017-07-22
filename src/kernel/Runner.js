@@ -15,7 +15,7 @@ import {
 } from "./effects";
 import type { CallEffect } from "./effects";
 
-type Saga = Generator<any, void, any>;
+export type TaskGenerator = Generator<any, any, any>;
 
 const RUNNING = "r";
 const WAITING = "w";
@@ -51,7 +51,7 @@ type WaitHandle = WaitHandlePre & {
 
 type Task = {
   id: number,
-  generator: Saga,
+  generator: TaskGenerator,
   next: ?["next" | "throw", any],
   state: TaskState,
   error?: Error,
@@ -146,7 +146,7 @@ export default class Runner {
     this.tasks = {};
   }
 
-  run(generator: Saga) {
+  run(generator: TaskGenerator) {
     while (this.tasks[this.nextId]) this.nextId += 1;
     const task: Task = {
       id: this.nextId,

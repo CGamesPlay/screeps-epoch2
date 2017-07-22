@@ -23,7 +23,7 @@ type KnownConstructor = {
 function createProxy(ctor, name, id, data) {
   var target = Object.assign(
     Object.create(ctor.prototype),
-    { inspect: void 0, toString: () => `[${name} ${id} (missing)]` },
+    ({ inspect: void 0, toString: () => `[${name} ${id} (missing)]` }: any),
     data,
   );
   return new Proxy(target, {
