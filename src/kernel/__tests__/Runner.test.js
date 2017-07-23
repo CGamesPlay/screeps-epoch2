@@ -1,5 +1,15 @@
 import Runner from "../Runner";
-import { spawn, join, call, createChannel, wait, all, race } from "../effects";
+import {
+  spawn,
+  join,
+  call,
+  createChannel,
+  createSemaphore,
+  wait,
+  decrement,
+  all,
+  race,
+} from "../effects";
 
 const identity = x => x;
 
@@ -139,6 +149,27 @@ function* genChannelBasicChild(chan) {
   chan.notify(5678);
 }
 
+function* genSemaphoreDecrementImmediate() {
+  const sem = yield createSemaphore(2);
+  expect(sem.value()).toBe(2);
+  yield decrement(sem, 1);
+  expect(sem.value()).toBe(1);
+  yield decrement(sem, 1);
+  expect(sem.value()).toBe(0);
+}
+
+function* genSemaphoreDecrementAsync() {
+  const sem = yield createSemaphore(0);
+  yield spawn(genSemaphoreDecrementAsyncChild, sem);
+  expect(sem.value()).toBe(0);
+  yield decrement(sem, 1);
+  expect(sem.value()).toBe(0);
+}
+
+function* genSemaphoreDecrementAsyncChild(sem) {
+  sem.increment(1);
+}
+
 const run = gen => {
   const runner = new Runner();
   var steps = 0;
@@ -203,6 +234,16 @@ describe("Runner", () => {
   describe("Channel", () => {
     it("passes values", () => {
       run(genChannelBasic());
+    });
+  });
+
+  describe("Semaphore", () => {
+    it("decrements immediately", () => {
+      run(genSemaphoreDecrementImmediate());
+    });
+
+    it("decrements asynchronously", () => {
+      run(genSemaphoreDecrementAsync());
     });
   });
 });

@@ -7,12 +7,15 @@ import {
   JOIN,
   CALL,
   CREATE_CHANNEL,
+  CREATE_SEMAPHORE,
   WAIT,
+  DECREMENT,
   RACE,
   ALL,
   call,
   all,
 } from "./effects";
+import Semaphore, * as semaphores from "./Semaphore";
 import type { CallEffect } from "./effects";
 
 export type TaskGenerator = Generator<any, any, any>;
@@ -42,6 +45,7 @@ type WaitMode =
 type WaitHandlePre = {
   taskId?: number,
   channel?: Channel,
+  semaphore?: Semaphore,
   result?: any,
 };
 
@@ -71,6 +75,7 @@ type EffectResultCallback = (
 const taskStart = ["next", void 0];
 const runnerSymbol = Symbol("Runner");
 const taskSymbol = Symbol("Task");
+const valueSymbol = Symbol("Value");
 const waitListSymbol = Symbol("WaitList");
 
 class TaskHandle {
@@ -235,12 +240,30 @@ export default class Runner {
     if (!target || target.state !== WAITING || channel.buffer.length === 0) {
       throw new Error("Internal error: invalid channel waitList");
     }
-    const handle = _.find(target.waitHandles, { channel: channel });
+    const handle = _.find(target.waitHandles, { channel });
     if (!handle) {
-      throw new Error("Internal error: invalid wait");
+      throw new Error("Internal error: invalid waitHandles");
     }
     const value = channel.buffer.shift();
     this._notifyTask(target, handle, null, value);
+  }
+
+  _notifySemaphore(semaphore: Semaphore) {
+    const waitList = semaphores.getWaitList(semaphore);
+    const available = semaphore.value();
+    const [id, required] = waitList[0];
+    if (!id || required < available) return;
+    waitList.shift();
+    semaphores.decrement(semaphore, required);
+    const target = this.tasks[id];
+    if (!target || target.state !== WAITING) {
+      throw new Error("Internal error: invalid semaphore waitList");
+    }
+    const handle = _.find(target.waitHandles, { semaphore });
+    if (!handle) {
+      throw new Error("Internal error: invalid waitHandles");
+    }
+    this._notifyTask(target, handle, null, 0);
   }
 
   _notifyTask(task: Task, handle: WaitHandle, error: ?Error, result: any) {
@@ -293,6 +316,9 @@ export default class Runner {
       } else if (handle.channel) {
         const waitList = ((handle.channel: any)[waitListSymbol]: Array<number>);
         _.remove(waitList, id => id === task.id);
+      } else if (handle.semaphore) {
+        const waitList = semaphores.getWaitList(handle.semaphore);
+        _.remove(waitList, x => x[0] === task.id);
       }
     });
   }
@@ -311,8 +337,12 @@ export default class Runner {
       this._applyCall(task, value, cb);
     } else if (value.type === CREATE_CHANNEL) {
       this._applyCreateChannel(task, value, cb);
+    } else if (value.type === CREATE_SEMAPHORE) {
+      this._applyCreateSemaphore(task, value, cb);
     } else if (value.type === WAIT) {
       this._applyWait(task, value, cb);
+    } else if (value.type === DECREMENT) {
+      this._applyDecrement(task, value, cb);
     } else if (value.type === ALL) {
       this._applyAll(task, value, cb);
     } else if (value.type === RACE) {
@@ -395,6 +425,10 @@ export default class Runner {
     return cb(new Channel(this));
   }
 
+  _applyCreateSemaphore(task: Task, { value }: any, cb: EffectResultCallback) {
+    return cb(new Semaphore(this, value));
+  }
+
   _applyWait(task: Task, { channel }: any, cb: EffectResultCallback) {
     if (!(channel instanceof Channel)) {
       return cb(null, new Error("Invalid channel"));
@@ -407,6 +441,27 @@ export default class Runner {
     } else {
       ((channel: any)[waitListSymbol]: Array<number>).push(task.id);
       return cb(null, null, { channel });
+    }
+  }
+
+  _applyDecrement(
+    task: Task,
+    { semaphore, value }: { semaphore: Semaphore, value: number },
+    cb: EffectResultCallback,
+  ) {
+    if (!(semaphore instanceof Semaphore)) {
+      return cb(null, new Error("Invalid semaphore"));
+    } else if (semaphores.getRunner(semaphore) !== this) {
+      return cb(null, new Error("Semaphore is from different Runner"));
+    } else if (typeof value !== "number" || value <= 0) {
+      return cb(null, new Error("Value must be a positive number"));
+    }
+    if (semaphore.value() >= value) {
+      semaphores.decrement(semaphore, value);
+      return cb(true);
+    } else {
+      semaphores.getWaitList(semaphore).push([task.id, value]);
+      return cb(null, null, { semaphore });
     }
   }
 
