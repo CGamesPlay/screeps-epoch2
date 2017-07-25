@@ -32,7 +32,8 @@
   "jest": {
     "setupFiles": [
       "screeps-regenerator-runtime/runtime",
-      "./src/__mocks__/screeps.js"
+      "./src/__mocks__/screeps.js",
+      "./src/__mocks__/testHelpers.js"
     ]
   }
 }

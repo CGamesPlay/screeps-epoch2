@@ -16,7 +16,7 @@ import {
 import Semaphore, * as semaphores from "./Semaphore";
 import type { CallEffect } from "./effects";
 
-export type TaskGenerator = Generator<any, any, any>;
+export type TaskGenerator<T = any> = Generator<any, any, T>;
 
 const RUNNING = "r";
 const WAITING = "w";
@@ -53,7 +53,7 @@ type WaitHandle = WaitHandlePre & {
 
 type Task = {
   id: number,
-  generator: TaskGenerator,
+  generator: TaskGenerator<>,
   next: ?["next" | "throw", any],
   state: TaskState,
   error?: Error,
@@ -149,7 +149,7 @@ export default class Runner {
     this.tasks = {};
   }
 
-  run(generator: TaskGenerator) {
+  run(generator: TaskGenerator<>) {
     while (this.tasks[this.nextId]) this.nextId += 1;
     const task: Task = {
       id: this.nextId,
@@ -248,6 +248,7 @@ export default class Runner {
 
   _notifySemaphore(semaphore: Semaphore) {
     const waitList = semaphores.getWaitList(semaphore);
+    if (!waitList[0]) return;
     const available = semaphore.value();
     const [id, required] = waitList[0];
     if (!id || required < available) return;

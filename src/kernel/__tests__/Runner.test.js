@@ -171,36 +171,18 @@ function* genSemaphoreTryDecrement() {
   expect(sem.value()).toBe(0);
 }
 
-const run = gen => {
-  const runner = new Runner();
-  var steps = 0;
-  let task = runner.run(gen);
-  while (runner.isActive()) {
-    steps += 1;
-    if (steps > 100) {
-      throw new Error("Timed out after 100 steps");
-    }
-    runner.step();
-  }
-  if (task.error()) {
-    throw task.error();
-  } else {
-    return task.result();
-  }
-};
-
 describe("Runner", () => {
   it("handles no-op effects", () => {
-    run(genNoOps());
+    runGenerator(genNoOps());
   });
 
   it("handles single spawn/join effects", () => {
-    run(genSpawn());
+    runGenerator(genSpawn());
   });
 
   it("handles call effects", () => {
     const actual = [];
-    run(genCall(actual));
+    runGenerator(genCall(actual));
     expect(actual).toEqual([
       "sync identity",
       "gen identity",
@@ -210,45 +192,45 @@ describe("Runner", () => {
 
   describe("all", () => {
     it("handles immediately available values", () => {
-      run(genAllImmediate());
+      runGenerator(genAllImmediate());
     });
     it("handles delayed values", () => {
-      run(genAllDelayed());
+      runGenerator(genAllDelayed());
     });
     it("allows simple arrays", () => {
-      run(genAllArray());
+      runGenerator(genAllArray());
     });
   });
 
   describe("race", () => {
     it("handles immediately resolved races", () => {
-      run(genRaceImmediate());
+      runGenerator(genRaceImmediate());
     });
     it("handles delayed races", () => {
-      run(genRaceDelayed());
+      runGenerator(genRaceDelayed());
     });
     it("can be nested", () => {
-      run(genRaceNested());
+      runGenerator(genRaceNested());
     });
   });
 
   describe("Channel", () => {
     it("passes values", () => {
-      run(genChannelBasic());
+      runGenerator(genChannelBasic());
     });
   });
 
   describe("Semaphore", () => {
     it("decrements immediately", () => {
-      run(genSemaphoreDecrementImmediate());
+      runGenerator(genSemaphoreDecrementImmediate());
     });
 
     it("decrements asynchronously", () => {
-      run(genSemaphoreDecrementAsync());
+      runGenerator(genSemaphoreDecrementAsync());
     });
 
     it("decrements without blocking", () => {
-      run(genSemaphoreTryDecrement());
+      runGenerator(genSemaphoreTryDecrement());
     });
   });
 });
