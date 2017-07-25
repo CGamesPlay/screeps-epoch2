@@ -428,7 +428,9 @@ export default class Runner {
     if (func === Semaphore.create) {
       return this._applyCreateSemaphore(task, args[0], cb);
     } else if (func === Semaphore.prototype.decrement) {
-      return this._applyDecrement(task, context, args[0], cb);
+      return this._applyDecrement(task, context, args[0], true, cb);
+    } else if (func === Semaphore.prototype.tryDecrement) {
+      return this._applyDecrement(task, context, args[0], false, cb);
     } else {
       return cb(
         null,
@@ -468,6 +470,7 @@ export default class Runner {
     task: Task,
     semaphore: Semaphore,
     value: number,
+    blocking: boolean,
     cb: EffectResultCallback,
   ) {
     if (!(semaphore instanceof Semaphore)) {
@@ -480,9 +483,11 @@ export default class Runner {
     if (semaphore.value() >= value) {
       semaphores.decrement(semaphore, value);
       return cb(true);
-    } else {
+    } else if (blocking) {
       semaphores.getWaitList(semaphore).push([task.id, value]);
       return cb(null, null, { semaphore });
+    } else {
+      return cb(false);
     }
   }
 

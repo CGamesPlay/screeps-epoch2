@@ -161,6 +161,16 @@ function* genSemaphoreDecrementAsyncChild(sem) {
   sem.increment(1);
 }
 
+function* genSemaphoreTryDecrement() {
+  const sem = yield call(Semaphore.create, 1);
+  let result = yield call([sem, "tryDecrement"], 1);
+  expect(result).toBe(true);
+  expect(sem.value()).toBe(0);
+  result = yield call([sem, "tryDecrement"], 1);
+  expect(result).toBe(false);
+  expect(sem.value()).toBe(0);
+}
+
 const run = gen => {
   const runner = new Runner();
   var steps = 0;
@@ -235,6 +245,10 @@ describe("Runner", () => {
 
     it("decrements asynchronously", () => {
       run(genSemaphoreDecrementAsync());
+    });
+
+    it("decrements without blocking", () => {
+      run(genSemaphoreTryDecrement());
     });
   });
 });

@@ -12,6 +12,7 @@ export default class Semaphore {
   static create: Symbol;
 
   decrement: Symbol;
+  tryDecrement: Symbol;
 
   constructor(runner: Runner, initialValue: number) {
     Object.defineProperties(this, {
@@ -33,6 +34,7 @@ export default class Semaphore {
 
 Semaphore.create = Symbol("SemaphoreCreate");
 Semaphore.prototype.decrement = Symbol("SemaphoreDecrement");
+Semaphore.prototype.tryDecrement = Symbol("SemaphoreTryDecrement");
 
 export const getRunner = (s: Semaphore): Runner => (s: any)[runnerSymbol];
 export const getValue = (s: Semaphore): number => (s: any)[valueSymbol];
