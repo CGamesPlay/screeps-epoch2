@@ -7,9 +7,7 @@ import {
   JOIN,
   CALL,
   CREATE_CHANNEL,
-  CREATE_SEMAPHORE,
   WAIT,
-  DECREMENT,
   RACE,
   ALL,
   call,
@@ -337,12 +335,8 @@ export default class Runner {
       this._applyCall(task, value, cb);
     } else if (value.type === CREATE_CHANNEL) {
       this._applyCreateChannel(task, value, cb);
-    } else if (value.type === CREATE_SEMAPHORE) {
-      this._applyCreateSemaphore(task, value, cb);
     } else if (value.type === WAIT) {
       this._applyWait(task, value, cb);
-    } else if (value.type === DECREMENT) {
-      this._applyDecrement(task, value, cb);
     } else if (value.type === ALL) {
       this._applyAll(task, value, cb);
     } else if (value.type === RACE) {
@@ -405,7 +399,10 @@ export default class Runner {
         func = value.context[func];
       }
     }
-    if (typeof func !== "function") {
+    // $FlowFixMe: 0.51.0 doesn't support typeof symbol
+    if (typeof func === "symbol") {
+      return this._applyCallBuiltin(task, func, value.context, value.args, cb);
+    } else if (typeof func !== "function") {
       return cb(null, new Error("Provided function is not callable"));
     }
     try {
@@ -421,12 +418,35 @@ export default class Runner {
     }
   }
 
-  _applyCreateChannel(task: Task, value: void, cb: EffectResultCallback) {
-    return cb(new Channel(this));
+  _applyCallBuiltin(
+    task: Task,
+    func: Symbol,
+    context: any,
+    args: Array<any>,
+    cb: EffectResultCallback,
+  ) {
+    if (func === Semaphore.create) {
+      return this._applyCreateSemaphore(task, args[0], cb);
+    } else if (func === Semaphore.prototype.decrement) {
+      return this._applyDecrement(task, context, args[0], cb);
+    } else {
+      return cb(
+        null,
+        new Error(`Symbol is not a valid kernel call: ${func.toString()}`),
+      );
+    }
   }
 
-  _applyCreateSemaphore(task: Task, { value }: any, cb: EffectResultCallback) {
-    return cb(new Semaphore(this, value));
+  _applyCreateSemaphore(task: Task, value: number, cb: EffectResultCallback) {
+    if (typeof value !== "number" || value < 0) {
+      return cb(null, new Error("Value must be a nonnegative number"));
+    } else {
+      return cb(new Semaphore(this, value));
+    }
+  }
+
+  _applyCreateChannel(task: Task, value: void, cb: EffectResultCallback) {
+    return cb(new Channel(this));
   }
 
   _applyWait(task: Task, { channel }: any, cb: EffectResultCallback) {
@@ -446,7 +466,8 @@ export default class Runner {
 
   _applyDecrement(
     task: Task,
-    { semaphore, value }: { semaphore: Semaphore, value: number },
+    semaphore: Semaphore,
+    value: number,
     cb: EffectResultCallback,
   ) {
     if (!(semaphore instanceof Semaphore)) {

@@ -1,15 +1,6 @@
 import Runner from "../Runner";
-import {
-  spawn,
-  join,
-  call,
-  createChannel,
-  createSemaphore,
-  wait,
-  decrement,
-  all,
-  race,
-} from "../effects";
+import Semaphore from "../Semaphore";
+import { spawn, join, call, createChannel, wait, all, race } from "../effects";
 
 const identity = x => x;
 
@@ -150,19 +141,19 @@ function* genChannelBasicChild(chan) {
 }
 
 function* genSemaphoreDecrementImmediate() {
-  const sem = yield createSemaphore(2);
+  const sem = yield call(Semaphore.create, 2);
   expect(sem.value()).toBe(2);
-  yield decrement(sem, 1);
+  yield call([sem, "decrement"], 1);
   expect(sem.value()).toBe(1);
-  yield decrement(sem, 1);
+  yield call([sem, "decrement"], 1);
   expect(sem.value()).toBe(0);
 }
 
 function* genSemaphoreDecrementAsync() {
-  const sem = yield createSemaphore(0);
+  const sem = yield call(Semaphore.create, 0);
   yield spawn(genSemaphoreDecrementAsyncChild, sem);
   expect(sem.value()).toBe(0);
-  yield decrement(sem, 1);
+  yield call([sem, "decrement"], 1);
   expect(sem.value()).toBe(0);
 }
 

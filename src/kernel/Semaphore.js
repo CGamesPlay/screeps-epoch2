@@ -9,6 +9,10 @@ const valueSymbol = Symbol("Value");
 const waitListSymbol = Symbol("WaitList");
 
 export default class Semaphore {
+  static create: Symbol;
+
+  decrement: Symbol;
+
   constructor(runner: Runner, initialValue: number) {
     Object.defineProperties(this, {
       [runnerSymbol]: { value: runner },
@@ -26,6 +30,9 @@ export default class Semaphore {
     getRunner(this)._notifySemaphore(this);
   }
 }
+
+Semaphore.create = Symbol("SemaphoreCreate");
+Semaphore.prototype.decrement = Symbol("SemaphoreDecrement");
 
 export const getRunner = (s: Semaphore): Runner => (s: any)[runnerSymbol];
 export const getValue = (s: Semaphore): number => (s: any)[valueSymbol];
