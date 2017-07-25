@@ -40,10 +40,15 @@ type WaitMode =
   | typeof RACE_ARRAY
   | typeof RACE_OBJECT;
 
+const SEMAPHORE_DECREMENT = "d";
+const SEMAPHORE_ZERO = "z";
+type SemaphoreWaitMode = typeof SEMAPHORE_DECREMENT | typeof SEMAPHORE_ZERO;
+
 type WaitHandlePre = {
   taskId?: number,
   channel?: Channel,
   semaphore?: Semaphore,
+  mode?: SemaphoreWaitMode,
   result?: any,
 };
 
@@ -246,12 +251,12 @@ export default class Runner {
     this._notifyTask(target, handle, null, value);
   }
 
-  _notifySemaphore(semaphore: Semaphore) {
-    const waitList = semaphores.getWaitList(semaphore);
+  _notifySemaphorePositive(semaphore: Semaphore) {
+    const waitList = semaphores.getDecrementWaitList(semaphore);
     if (!waitList[0]) return;
     const available = semaphore.value();
     const [id, required] = waitList[0];
-    if (!id || required < available) return;
+    if (!id || required > available) return;
     waitList.shift();
     semaphores.decrement(semaphore, required);
     const target = this.tasks[id];
@@ -262,7 +267,22 @@ export default class Runner {
     if (!handle) {
       throw new Error("Internal error: invalid waitHandles");
     }
-    this._notifyTask(target, handle, null, 0);
+    this._notifyTask(target, handle, null, true);
+  }
+
+  _notifySemaphoreZero(semaphore: Semaphore) {
+    const waitList = semaphores.getZeroWaitList(semaphore);
+    waitList.forEach(id => {
+      const target = this.tasks[id];
+      if (!target || target.state !== WAITING) {
+        throw new Error("Internal error: invalid semaphore waitList");
+      }
+      const handle = _.find(target.waitHandles, { semaphore });
+      if (!handle) {
+        throw new Error("Internal error: invalid waitHandles");
+      }
+      this._notifyTask(target, handle, null, true);
+    });
   }
 
   _notifyTask(task: Task, handle: WaitHandle, error: ?Error, result: any) {
@@ -316,8 +336,13 @@ export default class Runner {
         const waitList = ((handle.channel: any)[waitListSymbol]: Array<number>);
         _.remove(waitList, id => id === task.id);
       } else if (handle.semaphore) {
-        const waitList = semaphores.getWaitList(handle.semaphore);
-        _.remove(waitList, x => x[0] === task.id);
+        if (handle.mode === SEMAPHORE_DECREMENT) {
+          const waitList = semaphores.getDecrementWaitList(handle.semaphore);
+          _.remove(waitList, x => x[0] === task.id);
+        } else {
+          const waitList = semaphores.getZeroWaitList(handle.semaphore);
+          _.remove(waitList, x => x === task.id);
+        }
       }
     });
   }
@@ -432,6 +457,8 @@ export default class Runner {
       return this._applyDecrement(task, context, args[0], true, cb);
     } else if (func === Semaphore.prototype.tryDecrement) {
       return this._applyDecrement(task, context, args[0], false, cb);
+    } else if (func === Semaphore.prototype.waitForZero) {
+      return this._applyWaitForZero(task, context, cb);
     } else {
       return cb(
         null,
@@ -485,10 +512,28 @@ export default class Runner {
       semaphores.decrement(semaphore, value);
       return cb(true);
     } else if (blocking) {
-      semaphores.getWaitList(semaphore).push([task.id, value]);
-      return cb(null, null, { semaphore });
+      semaphores.getDecrementWaitList(semaphore).push([task.id, value]);
+      return cb(null, null, { semaphore, mode: SEMAPHORE_DECREMENT });
     } else {
       return cb(false);
+    }
+  }
+
+  _applyWaitForZero(
+    task: Task,
+    semaphore: Semaphore,
+    cb: EffectResultCallback,
+  ) {
+    if (!(semaphore instanceof Semaphore)) {
+      return cb(null, new Error("Invalid semaphore"));
+    } else if (semaphores.getRunner(semaphore) !== this) {
+      return cb(null, new Error("Semaphore is from different Runner"));
+    }
+    if (semaphore.value() === 0) {
+      return cb(true);
+    } else {
+      semaphores.getZeroWaitList(semaphore).push(task.id);
+      return cb(null, null, { semaphore, mode: SEMAPHORE_ZERO });
     }
   }
 

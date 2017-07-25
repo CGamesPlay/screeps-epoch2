@@ -171,6 +171,32 @@ function* genSemaphoreTryDecrement() {
   expect(sem.value()).toBe(0);
 }
 
+function* genSemaphoreWaitForZero() {
+  const lock = yield call(Semaphore.create, 0);
+  const sem = yield call(Semaphore.create, 1);
+  const log = [];
+  const tasks = yield all(
+    spawn(genSemaphoreWaitForZeroConsumer, lock, sem),
+    spawn(genSemaphoreWaitForZeroMonitor, log, lock, sem),
+    spawn(genSemaphoreWaitForZeroMonitor, log, lock, sem),
+  );
+  yield all(tasks.map(t => join(t)));
+  // Test sync waiting for zero
+  yield call([sem, "waitForZero"]);
+  expect(log).toEqual(["got zero", "got zero"]);
+}
+
+function* genSemaphoreWaitForZeroConsumer(lock, sem) {
+  yield call([lock, "decrement"], 2);
+  yield call([sem, "decrement"], 1);
+}
+
+function* genSemaphoreWaitForZeroMonitor(log, lock, sem) {
+  lock.increment(1);
+  yield call([sem, "waitForZero"]);
+  log.push("got zero");
+}
+
 describe("Runner", () => {
   it("handles no-op effects", () => {
     runGenerator(genNoOps());
@@ -231,6 +257,10 @@ describe("Runner", () => {
 
     it("decrements without blocking", () => {
       runGenerator(genSemaphoreTryDecrement());
+    });
+
+    it("waits for zero", () => {
+      runGenerator(genSemaphoreWaitForZero());
     });
   });
 });
