@@ -4,14 +4,6 @@ import { spawn, join, call, createChannel, wait, all, race } from "../effects";
 
 const identity = x => x;
 
-function* genIdentity(param) {
-  return param;
-}
-
-function* genError(message) {
-  throw new Error(message);
-}
-
 function* genNoOps() {
   let result = yield null;
   expect(result).toBe(null);
@@ -22,20 +14,8 @@ function* genNoOps() {
   expect(result).toBe(obj);
 }
 
-function* genSpawn() {
-  const task = yield spawn(genIdentity, "result");
-  const result = yield join(task);
-  expect(result).toEqual("result");
-}
-
 function* genCall(actual) {
   actual.push(yield call(identity, "sync identity"));
-  actual.push(yield call(genIdentity, "gen identity"));
-  try {
-    yield call(genError, "uh oh");
-  } catch (ex) {
-    actual.push(`Error caught: ${ex.message}`);
-  }
 }
 
 function* genAllImmediate() {
@@ -140,6 +120,51 @@ function* genChannelBasicChild(chan) {
   chan.notify(5678);
 }
 
+function* genTaskResult() {
+  const lock = yield call(Semaphore.create, 0);
+  let task = yield spawn(genTaskResultChild, lock, "async result");
+  lock.increment(1);
+  let result = yield join(task);
+  expect(result).toBe("async result");
+
+  lock.increment(1);
+  task = yield spawn(genTaskResultChild, lock, "sync result");
+  yield call([lock, "waitForZero"]);
+  result = yield join(task);
+  expect(result).toBe("sync result");
+}
+
+function* genTaskResultChild(lock, result) {
+  yield call([lock, "decrement"], 1);
+  return result;
+}
+
+function* genTaskError() {
+  const lock = yield call(Semaphore.create, 0);
+  let task = yield spawn(genTaskErrorChild, lock, "async error");
+  lock.increment(1);
+  try {
+    let result = yield join(task);
+    expect(false).toBe(true);
+  } catch (err) {
+    expect(err.message).toBe("async error");
+  }
+  lock.increment(1);
+  task = yield spawn(genTaskErrorChild, lock, "sync error");
+  yield call([lock, "waitForZero"]);
+  try {
+    let result = yield join(task);
+    expect(false).toBe(true);
+  } catch (err) {
+    expect(err.message).toBe("sync error");
+  }
+}
+
+function* genTaskErrorChild(lock, message) {
+  yield call([lock, "decrement"], 1);
+  throw new Error(message);
+}
+
 function* genSemaphoreDecrementImmediate() {
   const sem = yield call(Semaphore.create, 2);
   expect(sem.value()).toBe(2);
@@ -198,22 +223,10 @@ function* genSemaphoreWaitForZeroMonitor(log, lock, sem) {
 }
 
 describe("Runner", () => {
-  it("handles no-op effects", () => {
-    runGenerator(genNoOps());
-  });
-
-  it("handles single spawn/join effects", () => {
-    runGenerator(genSpawn());
-  });
-
   it("handles call effects", () => {
     const actual = [];
     runGenerator(genCall(actual));
-    expect(actual).toEqual([
-      "sync identity",
-      "gen identity",
-      "Error caught: uh oh",
-    ]);
+    expect(actual).toEqual(["sync identity"]);
   });
 
   describe("all", () => {
@@ -243,6 +256,15 @@ describe("Runner", () => {
   describe("Channel", () => {
     it("passes values", () => {
       runGenerator(genChannelBasic());
+    });
+  });
+
+  describe("Task", () => {
+    it("returns a result", () => {
+      runGenerator(genTaskResult());
+    });
+    it("throws an error", () => {
+      runGenerator(genTaskError());
     });
   });
 
