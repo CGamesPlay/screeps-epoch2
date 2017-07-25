@@ -14,6 +14,7 @@ import {
   all,
 } from "./effects";
 import Semaphore, * as semaphores from "./Semaphore";
+import invariant from "./invariant";
 import type { CallEffect } from "./effects";
 
 export type TaskGenerator<T = any> = Generator<any, any, T>;
@@ -185,9 +186,10 @@ export default class Runner {
           1,
           false,
           (result, error, wait) => {
-            if (result !== true) {
-              throw new Error("Internal Error: Task Semaphore not positive");
-            }
+            invariant(
+              result === true,
+              "Internal Error: Task Semaphore not positive",
+            );
           },
         );
         delete this.tasks[id];
@@ -236,13 +238,12 @@ export default class Runner {
     const id = ((channel: any)[waitListSymbol]: Array<number>).shift();
     if (!id) return;
     const target = this.tasks[id];
-    if (!target || target.state !== WAITING || channel.buffer.length === 0) {
-      throw new Error("Internal error: invalid channel waitList");
-    }
+    invariant(
+      target && target.state === WAITING && channel.buffer.length > 0,
+      "Internal error: invalid channel waitList",
+    );
     const handle = _.find(target.waitHandles, { channel });
-    if (!handle) {
-      throw new Error("Internal error: invalid waitHandles");
-    }
+    invariant(handle, "Internal error: invalid waitHandles");
     const value = channel.buffer.shift();
     this._notifyTask(target, handle, null, value);
   }
@@ -256,16 +257,15 @@ export default class Runner {
     waitList.shift();
     semaphores.decrement(semaphore, required);
     const target = this.tasks[id];
-    if (!target || target.state !== WAITING) {
-      throw new Error("Internal error: invalid semaphore waitList");
-    }
+    invariant(
+      target && target.state === WAITING,
+      "Internal error: invalid semaphore waitList",
+    );
     const handle = _.find(
       target.waitHandles,
       h => h.semaphore === semaphore && h.mode === SEMAPHORE_DECREMENT,
     );
-    if (!handle) {
-      throw new Error("Internal error: invalid waitHandles");
-    }
+    invariant(handle, "Internal error: invalid waitHandles");
     this._notifyTask(target, handle, null, true);
   }
 
@@ -273,28 +273,24 @@ export default class Runner {
     const waitList = semaphores.getZeroWaitList(semaphore);
     waitList.forEach(id => {
       const target = this.tasks[id];
-      if (!target || target.state !== WAITING) {
-        throw new Error("Internal error: invalid semaphore waitList");
-      }
+      invariant(
+        target && target.state === WAITING,
+        "Internal error: invalid semaphore waitList",
+      );
       const handle = _.find(
         target.waitHandles,
         h => h.semaphore === semaphore && h.mode === SEMAPHORE_ZERO,
       );
-      if (!handle) {
-        throw new Error("Internal error: invalid waitHandles");
-      }
+      invariant(handle, "Internal error: invalid waitHandles");
       if (handle.taskId) {
         const finishedTask = this.tasks[handle.taskId];
-        if (!finishedTask) {
-          throw new Error("Internal error: invalid WaitHandle taskId");
-        } else {
-          this._notifyTask(
-            target,
-            handle,
-            finishedTask.error,
-            finishedTask.result,
-          );
-        }
+        invariant(finishedTask, "Internal error: invalid WaitHandle taskId");
+        this._notifyTask(
+          target,
+          handle,
+          finishedTask.error,
+          finishedTask.result,
+        );
       } else {
         this._notifyTask(target, handle, null, true);
       }
@@ -314,9 +310,8 @@ export default class Runner {
     } else if (task.waitMode === ALL_ARRAY || task.waitMode === ALL_OBJECT) {
       handle.result = result;
       const handles = task.waitHandles;
-      if (!handles) {
-        throw new Error("Internal error: invalid waitHandles");
-      } else if (handles.every(h => "result" in h)) {
+      invariant(handles, "Internal error: invalid waitHandles");
+      if (handles.every(h => "result" in h)) {
         taskNext(
           task,
           prepareMultiResults(handles, task.waitMode === ALL_ARRAY),
@@ -325,16 +320,13 @@ export default class Runner {
     } else if (task.waitMode === RACE_ARRAY || task.waitMode === RACE_OBJECT) {
       handle.result = result;
       const handles = task.waitHandles;
-      if (!handles) {
-        throw new Error("Internal error: invalid waitHandles");
-      } else {
-        this._cancelWaits(task, handles);
-        delete task.waitHandles;
-        taskNext(
-          task,
-          prepareMultiResults(handles, task.waitMode === RACE_ARRAY),
-        );
-      }
+      invariant(handles, "Internal error: invalid waitHandles");
+      this._cancelWaits(task, handles);
+      delete task.waitHandles;
+      taskNext(
+        task,
+        prepareMultiResults(handles, task.waitMode === RACE_ARRAY),
+      );
     } else {
       throw new Error("Internal error: invalid waitMode");
     }
