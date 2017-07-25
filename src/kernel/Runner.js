@@ -63,8 +63,8 @@ type Task = {
   state: TaskState,
   error?: Error,
   result?: any,
-  /// The IDs of all tasks that are currently joining this one.
-  joinedIds: Array<number>,
+  /// Semaphore used to indicate that the task has finished.
+  semaphore: Semaphore,
   waitHandles?: Array<WaitHandle>,
   waitMode?: WaitMode,
 };
@@ -161,7 +161,7 @@ export default class Runner {
       generator,
       next: taskStart,
       state: RUNNING,
-      joinedIds: [],
+      semaphore: new Semaphore(this, 1),
     };
     this.nextId += 1;
     this.tasks[task.id] = task;
@@ -179,8 +179,18 @@ export default class Runner {
         progressed = true;
       }
       if (task.state === DONE) {
+        this._applyDecrement(
+          task,
+          task.semaphore,
+          1,
+          false,
+          (result, error, wait) => {
+            if (result !== true) {
+              throw new Error("Internal Error: Task Semaphore not positive");
+            }
+          },
+        );
         delete this.tasks[id];
-        this._notifyJoin(task);
       }
     });
     return progressed;
@@ -222,20 +232,6 @@ export default class Runner {
     return progressed;
   }
 
-  _notifyJoin(joined: Task) {
-    joined.joinedIds.forEach((id: number) => {
-      const target = this.tasks[id];
-      if (!target || target.state !== WAITING) {
-        throw new Error("Internal error: invalid joinedIds");
-      }
-      const handle = _.find(target.waitHandles, { taskId: joined.id });
-      if (!handle) {
-        throw new Error("Internal error: invalid join");
-      }
-      this._notifyTask(target, handle, joined.error, joined.result);
-    });
-  }
-
   _notifyChannel(channel: Channel) {
     const id = ((channel: any)[waitListSymbol]: Array<number>).shift();
     if (!id) return;
@@ -263,7 +259,10 @@ export default class Runner {
     if (!target || target.state !== WAITING) {
       throw new Error("Internal error: invalid semaphore waitList");
     }
-    const handle = _.find(target.waitHandles, { semaphore });
+    const handle = _.find(
+      target.waitHandles,
+      h => h.semaphore === semaphore && h.mode === SEMAPHORE_DECREMENT,
+    );
     if (!handle) {
       throw new Error("Internal error: invalid waitHandles");
     }
@@ -277,11 +276,28 @@ export default class Runner {
       if (!target || target.state !== WAITING) {
         throw new Error("Internal error: invalid semaphore waitList");
       }
-      const handle = _.find(target.waitHandles, { semaphore });
+      const handle = _.find(
+        target.waitHandles,
+        h => h.semaphore === semaphore && h.mode === SEMAPHORE_ZERO,
+      );
       if (!handle) {
         throw new Error("Internal error: invalid waitHandles");
       }
-      this._notifyTask(target, handle, null, true);
+      if (handle.taskId) {
+        const finishedTask = this.tasks[handle.taskId];
+        if (!finishedTask) {
+          throw new Error("Internal error: invalid WaitHandle taskId");
+        } else {
+          this._notifyTask(
+            target,
+            handle,
+            finishedTask.error,
+            finishedTask.result,
+          );
+        }
+      } else {
+        this._notifyTask(target, handle, null, true);
+      }
     });
   }
 
@@ -326,13 +342,7 @@ export default class Runner {
 
   _cancelWaits(task: Task, handles: Array<WaitHandle>) {
     handles.forEach(handle => {
-      if (handle.taskId) {
-        let target = this.tasks[handle.taskId];
-        if (!target) {
-          throw new Error("Internal error: invalid taskId in WaitHandle");
-        }
-        _.remove(target.joinedIds, id => id === task.id);
-      } else if (handle.channel) {
+      if (handle.channel) {
         const waitList = ((handle.channel: any)[waitListSymbol]: Array<number>);
         _.remove(waitList, id => id === task.id);
       } else if (handle.semaphore) {
@@ -410,8 +420,13 @@ export default class Runner {
     } else if (target.result) {
       return cb(target.result);
     } else {
-      target.joinedIds.push(task.id);
-      return cb(null, null, { taskId: target.id });
+      const semaphore = target.semaphore;
+      semaphores.getZeroWaitList(semaphore).push(task.id);
+      return cb(null, null, {
+        semaphore,
+        mode: SEMAPHORE_ZERO,
+        taskId: target.id,
+      });
     }
   }
 
