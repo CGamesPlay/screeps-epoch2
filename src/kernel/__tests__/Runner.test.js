@@ -1,6 +1,7 @@
 import Runner from "../Runner";
 import Semaphore from "../Semaphore";
-import { spawn, join, call, createChannel, wait, all, race } from "../effects";
+import Pipe from "../Pipe";
+import { spawn, join, call, all, race } from "../effects";
 
 const identity = x => x;
 
@@ -19,78 +20,90 @@ function* genCall(actual) {
 }
 
 function* genAllImmediate() {
-  const chanA = yield createChannel(),
-    chanB = yield createChannel();
-  chanA.notify("valueA");
-  chanB.notify("valueB");
-  let result = yield all({ chanA: wait(chanA), chanB: wait(chanB) });
+  const chanA = yield call(Pipe.create, 10),
+    chanB = yield call(Pipe.create, 10);
+  yield call([chanA, "write"], "valueA");
+  yield call([chanB, "write"], "valueB");
+  let result = yield all({
+    chanA: call([chanA, "read"]),
+    chanB: call([chanB, "read"]),
+  });
   expect(result).toEqual({ chanA: "valueA", chanB: "valueB" });
-  chanA.notify("valueC");
-  chanB.notify("valueD");
-  result = yield all(wait(chanA), wait(chanB));
+  yield call([chanA, "write"], "valueC");
+  yield call([chanB, "write"], "valueD");
+  result = yield all(call([chanA, "read"]), call([chanB, "read"]));
   expect(result).toEqual(["valueC", "valueD"]);
 }
 
 function* genAllDelayed() {
-  const lock = yield createChannel(),
-    chanA = yield createChannel(),
-    chanB = yield createChannel();
+  const lock = yield call(Pipe.create, 10),
+    chanA = yield call(Pipe.create, 10),
+    chanB = yield call(Pipe.create, 10);
   yield spawn(genAllDelayedChild, lock, chanA, chanB);
-  lock.notify();
-  let result = yield all({ chanA: wait(chanA), chanB: wait(chanB) });
+  yield call([lock, "write"]);
+  let result = yield all({
+    chanA: call([chanA, "read"]),
+    chanB: call([chanB, "read"]),
+  });
   expect(result).toEqual({ chanA: "valueA", chanB: "valueB" });
-  lock.notify();
-  result = yield all(wait(chanA), wait(chanB));
+  yield call([lock, "write"]);
+  result = yield all(call([chanA, "read"]), call([chanB, "read"]));
   expect(result).toEqual(["valueC", "valueD"]);
 }
 
 function* genAllDelayedChild(lock, chanA, chanB) {
-  yield wait(lock);
-  chanA.notify("valueA");
-  chanB.notify("valueB");
-  yield wait(lock);
-  chanA.notify("valueC");
-  chanB.notify("valueD");
+  yield call([lock, "read"]);
+  yield call([chanA, "write"], "valueA");
+  yield call([chanB, "write"], "valueB");
+  yield call([lock, "read"]);
+  yield call([chanA, "write"], "valueC");
+  yield call([chanB, "write"], "valueD");
 }
 
 function* genAllArray() {
-  const chanA = yield createChannel(),
-    chanB = yield createChannel();
-  chanA.notify("valueA");
-  chanB.notify("valueB");
-  let result = yield [wait(chanA), wait(chanB)];
+  const chanA = yield call(Pipe.create),
+    chanB = yield call(Pipe.create, 10);
+  yield call([chanA, "write"], "valueA");
+  yield call([chanB, "write"], "valueB");
+  let result = yield [call([chanA, "read"]), call([chanB, "read"])];
   expect(result).toEqual(["valueA", "valueB"]);
 }
 
 function* genRaceImmediate() {
-  const chanA = yield createChannel(),
-    chanB = yield createChannel();
-  chanA.notify("valueA");
-  chanB.notify("valueB");
-  let result = yield race({ chanA: wait(chanA), chanB: wait(chanB) });
+  const chanA = yield call(Pipe.create),
+    chanB = yield call(Pipe.create);
+  yield call([chanA, "write"], "valueA");
+  yield call([chanB, "write"], "valueB");
+  let result = yield race({
+    chanA: call([chanA, "read"]),
+    chanB: call([chanB, "read"]),
+  });
   expect(result).toEqual({ chanA: "valueA" });
-  result = yield race([wait(chanA), wait(chanB)]);
+  result = yield race([call([chanA, "read"]), call([chanB, "read"])]);
   expect(result).toEqual([void 0, "valueB"]);
 }
 
 function* genRaceDelayed() {
-  const lock = yield createChannel(),
-    chanA = yield createChannel(),
-    chanB = yield createChannel();
+  const lock = yield call(Pipe.create, 10),
+    chanA = yield call(Pipe.create, 10),
+    chanB = yield call(Pipe.create, 10);
   yield spawn(genRaceDelayedChild, lock, chanA, chanB);
-  lock.notify();
-  let result = yield race({ chanA: wait(chanA), chanB: wait(chanB) });
+  yield call([lock, "write"]);
+  let result = yield race({
+    chanA: call([chanA, "read"]),
+    chanB: call([chanB, "read"]),
+  });
   expect(result).toEqual({ chanA: "valueA" });
-  lock.notify();
-  result = yield race(wait(chanA), wait(chanB));
+  yield call([lock, "write"]);
+  result = yield race(call([chanA, "read"]), call([chanB, "read"]));
   expect(result).toEqual([void 0, "valueB"]);
 }
 
 function* genRaceDelayedChild(lock, chanA, chanB) {
-  yield wait(lock);
-  chanA.notify("valueA");
-  yield wait(lock);
-  chanB.notify("valueB");
+  yield call([lock, "read"]);
+  yield call([chanA, "write"], "valueA");
+  yield call([lock, "read"]);
+  yield call([chanB, "write"], "valueB");
 }
 
 function* genRaceNested() {
@@ -104,20 +117,6 @@ function* genRaceNested() {
     bar: ["three", "four"],
     baz: ["five", "six"],
   });
-}
-
-function* genChannelBasic() {
-  const chan = yield createChannel();
-  const task = yield spawn(genChannelBasicChild, chan);
-  let value = yield wait(chan);
-  expect(value).toEqual(1234);
-  value = yield wait(chan);
-  expect(value).toEqual(5678);
-}
-
-function* genChannelBasicChild(chan) {
-  chan.notify(1234);
-  chan.notify(5678);
 }
 
 function* genTaskResult() {
@@ -274,12 +273,6 @@ describe("Runner", () => {
     });
     it("can be nested", () => {
       runGenerator(genRaceNested());
-    });
-  });
-
-  describe("Channel", () => {
-    it("passes values", () => {
-      runGenerator(genChannelBasic());
     });
   });
 

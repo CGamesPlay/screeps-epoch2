@@ -2,17 +2,7 @@
 
 import _ from "lodash";
 
-import {
-  SPAWN,
-  JOIN,
-  CALL,
-  CREATE_CHANNEL,
-  WAIT,
-  RACE,
-  ALL,
-  call,
-  all,
-} from "./effects";
+import { SPAWN, JOIN, CALL, RACE, ALL, call, all } from "./effects";
 import Semaphore, * as semaphores from "./Semaphore";
 import invariant from "./invariant";
 import type { CallEffect } from "./effects";
@@ -42,7 +32,6 @@ type SemaphoreWaitMode = typeof SEMAPHORE_DECREMENT | typeof SEMAPHORE_ZERO;
 
 type WaitHandlePre = {
   taskId?: number,
-  channel?: Channel,
   semaphore?: Semaphore,
   mode?: SemaphoreWaitMode,
   /// Indicates that canceling this wait should additionally cancel the
@@ -103,23 +92,6 @@ class TaskHandle {
 }
 
 export { TaskHandle as Task };
-
-export class Channel {
-  buffer: Array<any>;
-
-  constructor(runner: Runner) {
-    Object.defineProperties(this, {
-      [runnerSymbol]: { value: runner },
-      [waitListSymbol]: { value: [] },
-    });
-    this.buffer = [];
-  }
-
-  notify(value: any) {
-    this.buffer.push(value);
-    ((this: any)[runnerSymbol]: Runner)._notifyChannel(this);
-  }
-}
 
 const taskNext = (task: Task, value: any) =>
   Object.assign(task, { state: RUNNING, next: ["next", value] });
@@ -237,20 +209,6 @@ export default class Runner {
     return progressed;
   }
 
-  _notifyChannel(channel: Channel) {
-    const id = ((channel: any)[waitListSymbol]: Array<number>).shift();
-    if (!id) return;
-    const target = this.tasks[id];
-    invariant(
-      target && target.state === WAITING && channel.buffer.length > 0,
-      "Internal error: invalid channel waitList",
-    );
-    const handle = _.find(target.waitHandles, { channel });
-    invariant(handle, "Internal error: invalid waitHandles");
-    const value = channel.buffer.shift();
-    this._notifyTask(target, handle, null, value);
-  }
-
   _notifySemaphorePositive(semaphore: Semaphore) {
     const waitList = semaphores.getDecrementWaitList(semaphore);
     if (!waitList[0]) return;
@@ -346,10 +304,7 @@ export default class Runner {
 
   _cancelWaits(task: Task, handles: Array<WaitHandle>) {
     handles.forEach(handle => {
-      if (handle.channel) {
-        const waitList = ((handle.channel: any)[waitListSymbol]: Array<number>);
-        _.remove(waitList, id => id === task.id);
-      } else if (handle.semaphore) {
+      if (handle.semaphore) {
         if (handle.mode === SEMAPHORE_DECREMENT) {
           const waitList = semaphores.getDecrementWaitList(handle.semaphore);
           _.remove(waitList, x => x[0] === task.id);
@@ -378,10 +333,6 @@ export default class Runner {
       this._applyJoin(task, value, null, cb);
     } else if (value.type === CALL) {
       this._applyCall(task, value, cb);
-    } else if (value.type === CREATE_CHANNEL) {
-      this._applyCreateChannel(task, value, cb);
-    } else if (value.type === WAIT) {
-      this._applyWait(task, value, cb);
     } else if (value.type === ALL) {
       this._applyAll(task, value, cb);
     } else if (value.type === RACE) {
@@ -504,25 +455,6 @@ export default class Runner {
       return cb(null, new Error("Value must be a nonnegative number"));
     } else {
       return cb(new Semaphore(this, value));
-    }
-  }
-
-  _applyCreateChannel(task: Task, value: void, cb: EffectResultCallback) {
-    return cb(new Channel(this));
-  }
-
-  _applyWait(task: Task, { channel }: any, cb: EffectResultCallback) {
-    if (!(channel instanceof Channel)) {
-      return cb(null, new Error("Invalid channel"));
-    } else if (channel[runnerSymbol] !== this) {
-      return cb(null, new Error("Channel is from different Runner"));
-    }
-    if (channel.buffer.length > 0) {
-      let result = channel.buffer.shift();
-      return cb(result);
-    } else {
-      ((channel: any)[waitListSymbol]: Array<number>).push(task.id);
-      return cb(null, null, { channel });
     }
   }
 

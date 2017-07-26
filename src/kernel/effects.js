@@ -1,13 +1,11 @@
 // @flow
 
-import type { Task, Channel } from "./Runner";
+import type { Task } from "./Runner";
 import type Semaphore from "./Semaphore";
 
 export const SPAWN = Symbol("Spawn");
 export const JOIN = Symbol("Join");
 export const CALL = Symbol("Call");
-export const CREATE_CHANNEL = Symbol("CreateChannel");
-export const WAIT = Symbol("Wait");
 export const ALL = Symbol("All");
 export const RACE = Symbol("Race");
 
@@ -43,7 +41,5 @@ const createMultiEffect = (args: Array<any>, type: any) => {
 export const spawn = (...args: Array<any>) => createCallEffect(args, SPAWN);
 export const join = (task: Task) => ({ type: JOIN, task });
 export const call = (...args: Array<any>) => createCallEffect(args, CALL);
-export const createChannel = () => ({ type: CREATE_CHANNEL });
-export const wait = (channel: Channel) => ({ type: WAIT, channel });
 export const all = (...args: Array<any>) => createMultiEffect(args, ALL);
 export const race = (...args: Array<any>) => createMultiEffect(args, RACE);
