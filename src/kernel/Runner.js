@@ -21,13 +21,8 @@ export type TaskGenerator<T = any> = Generator<any, any, T>;
 
 const RUNNING = "r";
 const WAITING = "w";
-const CANCELING = "c";
 const DONE = "d";
-type TaskState =
-  | typeof RUNNING
-  | typeof WAITING
-  | typeof CANCELING
-  | typeof DONE;
+type TaskState = typeof RUNNING | typeof WAITING | typeof DONE;
 
 const SINGLE = "s";
 const ALL_ARRAY = "aa";
@@ -50,6 +45,9 @@ type WaitHandlePre = {
   channel?: Channel,
   semaphore?: Semaphore,
   mode?: SemaphoreWaitMode,
+  /// Indicates that canceling this wait should additionally cancel the
+  /// underlying task.
+  cancelTask?: boolean,
   result?: any,
 };
 
@@ -88,6 +86,11 @@ class TaskHandle {
       [runnerSymbol]: { value: runner },
       [taskSymbol]: { value: task },
     });
+  }
+
+  cancel() {
+    const task = ((this: any)[taskSymbol]: Task);
+    return ((this: any)[runnerSymbol]: Runner)._cancelTask(task);
   }
 
   error(): ?Error {
@@ -332,6 +335,15 @@ export default class Runner {
     }
   }
 
+  _cancelTask(task: Task) {
+    const error = new Error("Task has been canceled");
+    taskThrow(task, error);
+    if (task.waitHandles) {
+      this._cancelWaits(task, task.waitHandles);
+      delete task.waitHandles;
+    }
+  }
+
   _cancelWaits(task: Task, handles: Array<WaitHandle>) {
     handles.forEach(handle => {
       if (handle.channel) {
@@ -346,6 +358,11 @@ export default class Runner {
           _.remove(waitList, x => x === task.id);
         }
       }
+      if (handle.taskId && handle.cancelTask) {
+        const dependent = this.tasks[handle.taskId];
+        invariant(dependent, "Internal error: invalid WaitHandle taskId");
+        this._cancelTask(dependent);
+      }
     });
   }
 
@@ -358,7 +375,7 @@ export default class Runner {
     } else if (value.type === SPAWN) {
       this._applySpawn(task, value, cb);
     } else if (value.type === JOIN) {
-      this._applyJoin(task, value, cb);
+      this._applyJoin(task, value, null, cb);
     } else if (value.type === CALL) {
       this._applyCall(task, value, cb);
     } else if (value.type === CREATE_CHANNEL) {
@@ -400,7 +417,12 @@ export default class Runner {
     return cb(result);
   }
 
-  _applyJoin(task: Task, { task: target }: any, cb: EffectResultCallback) {
+  _applyJoin(
+    task: Task,
+    { task: target }: any,
+    waitExtra: ?Object,
+    cb: EffectResultCallback,
+  ) {
     if (!(target instanceof TaskHandle)) {
       return cb(null, new Error("Invalid join target"));
     } else if (target[runnerSymbol] !== this) {
@@ -414,11 +436,14 @@ export default class Runner {
     } else {
       const semaphore = target.semaphore;
       semaphores.getZeroWaitList(semaphore).push(task.id);
-      return cb(null, null, {
-        semaphore,
-        mode: SEMAPHORE_ZERO,
-        taskId: target.id,
-      });
+      return cb(
+        null,
+        null,
+        Object.assign(
+          { semaphore, mode: SEMAPHORE_ZERO, taskId: target.id },
+          waitExtra,
+        ),
+      );
     }
   }
 
@@ -445,7 +470,7 @@ export default class Runner {
     }
     if (result && typeof result.next === "function") {
       result = this.run(result);
-      return this._applyJoin(task, { task: result }, cb);
+      return this._applyJoin(task, { task: result }, { cancelTask: true }, cb);
     } else {
       return cb(result);
     }

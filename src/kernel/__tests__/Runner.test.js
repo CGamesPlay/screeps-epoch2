@@ -165,6 +165,30 @@ function* genTaskErrorChild(lock, message) {
   throw new Error(message);
 }
 
+function* genTaskCancel() {
+  let lock = yield call(Semaphore.create, 0);
+  let task = yield spawn(genTaskCancelChild, lock);
+  yield call([lock, "decrement"], 1);
+  task.cancel();
+  lock.increment(1);
+  try {
+    yield join(task);
+    expect(false).toBe(true);
+  } catch (err) {
+    expect(err.message).toBe("Task has been canceled");
+  }
+  expect(lock.value()).toBe(1);
+}
+
+function* genTaskCancelChild(lock) {
+  yield call([lock, "increment"], 1);
+  yield call(genTaskCancelChild2, lock);
+}
+
+function* genTaskCancelChild2(lock) {
+  yield call([lock, "decrement"], 1);
+}
+
 function* genSemaphoreDecrementImmediate() {
   const sem = yield call(Semaphore.create, 2);
   expect(sem.value()).toBe(2);
@@ -265,6 +289,9 @@ describe("Runner", () => {
     });
     it("throws an error", () => {
       runGenerator(genTaskError());
+    });
+    it("can be canceled", () => {
+      runGenerator(genTaskCancel());
     });
   });
 
