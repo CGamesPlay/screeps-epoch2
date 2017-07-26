@@ -258,6 +258,27 @@ export default class Runner {
     });
   }
 
+  _notifySemaphoreDestroyed(semaphore: Semaphore) {
+    const waitList = semaphores
+      .getZeroWaitList(semaphore)
+      .concat(semaphores.getDecrementWaitList(semaphore).map(x => x[0]));
+    waitList.forEach(id => {
+      const target = this.tasks[id];
+      invariant(
+        target && target.state === WAITING,
+        "Internal error: invalid semaphore waitList",
+      );
+      const handle = _.find(target.waitHandles, h => h.semaphore === semaphore);
+      invariant(handle, "Internal error: invalid waitHandles");
+      this._notifyTask(
+        target,
+        handle,
+        new Error(semaphores.destroyedMessage),
+        null,
+      );
+    });
+  }
+
   _notifyTask(task: Task, handle: WaitHandle, error: ?Error, result: any) {
     if (error) {
       taskThrow(task, error);
@@ -472,7 +493,9 @@ export default class Runner {
     } else if (typeof value !== "number" || value <= 0) {
       return cb(null, new Error("Value must be a positive number"));
     }
-    if (semaphore.value() >= value) {
+    if (!semaphore.active()) {
+      return cb(null, new Error(semaphores.destroyedMessage));
+    } else if (semaphore.value() >= value) {
       semaphores.decrement(semaphore, value);
       return cb(true);
     } else if (blocking) {

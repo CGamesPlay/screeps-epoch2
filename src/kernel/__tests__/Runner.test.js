@@ -245,6 +245,33 @@ function* genSemaphoreWaitForZeroMonitor(log, lock, sem) {
   log.push("got zero");
 }
 
+function* genSemaphoreDestroy() {
+  let sem = yield call(Semaphore.create, 0);
+  // Sync
+  sem.destroy();
+  expect(() => sem.destroy()).not.toThrow();
+  try {
+    yield call([sem, "decrement"], 1);
+    expect(false).toBe(true);
+  } catch (err) {
+    expect(err.message).toBe("Semaphore has been destroyed");
+  }
+
+  // Async
+  sem = yield call(Semaphore.create, 0);
+  yield spawn(genSemaphoreDestroyChild, sem);
+  try {
+    yield call([sem, "decrement"], 1);
+    expect(false).toBe(true);
+  } catch (err) {
+    expect(err.message).toBe("Semaphore has been destroyed");
+  }
+}
+
+function* genSemaphoreDestroyChild(sem) {
+  sem.destroy();
+}
+
 describe("Runner", () => {
   it("handles call effects", () => {
     const actual = [];
@@ -303,6 +330,10 @@ describe("Runner", () => {
 
     it("waits for zero", () => {
       runGenerator(genSemaphoreWaitForZero());
+    });
+
+    it("can be destroyed", () => {
+      runGenerator(genSemaphoreDestroy());
     });
   });
 });
