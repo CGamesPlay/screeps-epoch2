@@ -53,11 +53,26 @@ export default class Pipe<T> {
   *read(): TaskGenerator<T> {
     yield call([this.ready, "decrement"], 1);
     let value = this.buffer.shift();
-    this.empty.increment(1);
+    if (this.open()) {
+      this.empty.increment(1);
+    } else if (!this.hasData()) {
+      this.ready.destroy();
+    }
     return value;
   }
 
   hasData(): boolean {
     return this.ready.value() > 0;
+  }
+
+  open(): boolean {
+    return this.empty.active();
+  }
+
+  close() {
+    this.empty.destroy();
+    if (!this.hasData()) {
+      this.ready.destroy();
+    }
   }
 }

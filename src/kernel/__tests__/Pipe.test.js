@@ -42,6 +42,44 @@ function* genHasData() {
   expect(pipe.hasData()).toBe(true);
 }
 
+function* genClose() {
+  let pipe = yield call(Pipe.create, 2);
+  expect(pipe.open()).toBe(true);
+  yield call([pipe, "write"], "one");
+  yield call([pipe, "write"], "two");
+  pipe.close();
+  expect(pipe.open()).toBe(false);
+  // After closing, writes will fail.
+  try {
+    yield call([pipe, "write"], "three");
+    expect(false).toBe(true);
+  } catch (err) {
+    expect(err.message).toBe("Semaphore has been destroyed");
+  }
+  // Reads still succeed while there is buffered data.
+  let result = yield call([pipe, "read"]);
+  expect(result).toBe("one");
+  result = yield call([pipe, "read"]);
+  expect(result).toBe("two");
+  // Reads fail once buffer is depleted.
+  try {
+    yield call([pipe, "read"]);
+    expect(false).toBe(true);
+  } catch (err) {
+    expect(err.message).toBe("Semaphore has been destroyed");
+  }
+
+  // Both ends are closed immediately when no data is pending.
+  pipe = yield call(Pipe.create);
+  pipe.close();
+  try {
+    yield call([pipe, "read"]);
+    expect(false).toBe(true);
+  } catch (err) {
+    expect(err.message).toBe("Semaphore has been destroyed");
+  }
+}
+
 describe("Pipe", () => {
   it("blocks writes on overflow", () => {
     runGenerator(genBlocking());
@@ -57,5 +95,9 @@ describe("Pipe", () => {
 
   it("can query available data", () => {
     runGenerator(genHasData());
+  });
+
+  it("can be closed", () => {
+    runGenerator(genClose());
   });
 });
