@@ -31,12 +31,12 @@ export default class Semaphore {
     });
   }
 
-  value() {
+  value(): number {
     invariant(getActive(this), destroyedMessage);
     return getValue(this);
   }
 
-  active() {
+  active(): boolean {
     return getActive(this);
   }
 
@@ -61,7 +61,7 @@ Semaphore.prototype.waitForZero = Symbol("SemaphoreWaitForZero");
 
 export const getRunner = (s: Semaphore): Runner => (s: any)[runnerSymbol];
 export const getValue = (s: Semaphore): number => (s: any)[valueSymbol];
-export const getActive = (s: Semaphore): number => (s: any)[activeSymbol];
+export const getActive = (s: Semaphore): boolean => (s: any)[activeSymbol];
 export const getDecrementWaitList = (s: Semaphore): Array<WaitListItem> =>
   (s: any)[decrementWaitListSymbol];
 export const getZeroWaitList = (s: Semaphore): Array<number> =>

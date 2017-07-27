@@ -44,7 +44,7 @@ type WaitHandle = WaitHandlePre & {
   key: string | number,
 };
 
-type Task = {
+export type Task = {
   id: number,
   generator: TaskGenerator<>,
   next: ?["next" | "throw", any],
@@ -69,7 +69,7 @@ const taskSymbol = Symbol("Task");
 const valueSymbol = Symbol("Value");
 const waitListSymbol = Symbol("WaitList");
 
-class TaskHandle {
+export class TaskHandle {
   constructor(runner: Runner, task: Task) {
     Object.defineProperties(this, {
       [runnerSymbol]: { value: runner },
@@ -91,8 +91,6 @@ class TaskHandle {
   }
 }
 
-export { TaskHandle as Task };
-
 const taskNext = (task: Task, value: any) =>
   Object.assign(task, { state: RUNNING, next: ["next", value] });
 const taskThrow = (task: Task, error: Error) =>
@@ -113,6 +111,37 @@ const prepareMultiResults = (handles: Array<WaitHandle>, asArray: boolean) =>
     return result;
   }, asArray ? new Array(handles.length) : {});
 
+export interface RunQueue {
+  schedule(t: Task): void,
+  getNext(): ?Task,
+  shouldInterrupt(t: Task): boolean,
+  taskDidStart(t: Task): void,
+  taskDidFinish(t: Task, r: any, e: ?Error): void,
+}
+
+class BasicRunQueue {
+  queue: Array<Task>;
+
+  constructor() {
+    this.queue = [];
+  }
+
+  schedule(task: Task) {
+    this.queue.push(task);
+  }
+
+  getNext(): ?Task {
+    return this.queue.shift();
+  }
+
+  shouldInterrupt(task: Task): boolean {
+    return false;
+  }
+
+  taskDidStart(task: Task) {}
+  taskDidFinish(task: Task, result: any, error: ?Error) {}
+}
+
 function* genIdentity(x: any) {
   return x;
 }
@@ -123,10 +152,12 @@ function* yieldEffect(effect: any) {
 
 export default class Runner {
   nextId: number;
+  queue: RunQueue;
   tasks: { [key: number]: Task };
 
-  constructor() {
+  constructor(queue: RunQueue) {
     this.nextId = 1;
+    this.queue = queue || new BasicRunQueue();
     this.tasks = {};
   }
 
@@ -141,6 +172,8 @@ export default class Runner {
     };
     this.nextId += 1;
     this.tasks[task.id] = task;
+    this.queue.taskDidStart(task);
+    this.queue.schedule(task);
     return this._getTaskHandle(task);
   }
 
@@ -149,11 +182,9 @@ export default class Runner {
   }
 
   step() {
-    var progressed = false;
-    _.forOwn(this.tasks, (task: Task, id: number) => {
-      if (this._stepTask(task)) {
-        progressed = true;
-      }
+    var task;
+    while ((task = this.queue.getNext())) {
+      this._stepTask(task);
       if (task.state === DONE) {
         this._applyDecrement(
           task,
@@ -167,10 +198,9 @@ export default class Runner {
             );
           },
         );
-        delete this.tasks[id];
+        delete this.tasks[task.id];
       }
-    });
-    return progressed;
+    }
   }
 
   _getTaskHandle(task: Task): TaskHandle {
@@ -179,7 +209,7 @@ export default class Runner {
 
   _stepTask(task: Task): boolean {
     var progressed = false;
-    while (true) {
+    while (!this.queue.shouldInterrupt(task)) {
       let done,
         value,
         next = task.next;
@@ -189,11 +219,13 @@ export default class Runner {
         let [method, param] = next;
         task.next = void 0;
         ({ done, value } = (task.generator: any)[method](param));
-      } catch (err) {
-        Object.assign(task, { state: DONE, error: err });
+      } catch (error) {
+        Object.assign(task, { state: DONE, error });
+        this.queue.taskDidFinish(task, null, error);
       }
       if (done) {
         Object.assign(task, { state: DONE, result: value });
+        this.queue.taskDidFinish(task, value);
       } else {
         this._applyEffect(task, value, (next, error, wait) => {
           if (error) {
@@ -205,6 +237,9 @@ export default class Runner {
           }
         });
       }
+    }
+    if (task.state === RUNNING) {
+      this.queue.schedule(task);
     }
     return progressed;
   }
@@ -282,7 +317,7 @@ export default class Runner {
   _notifyTask(task: Task, handle: WaitHandle, error: ?Error, result: any) {
     if (error) {
       taskThrow(task, error);
-      if (task.waitHandles && task.waitHandles.length > 1) {
+      if (task.waitHandles) {
         this._cancelWaits(task, task.waitHandles);
         delete task.waitHandles;
       }
@@ -312,14 +347,21 @@ export default class Runner {
     } else {
       throw new Error("Internal error: invalid waitMode");
     }
+    if (task.state === RUNNING) {
+      this.queue.schedule(task);
+    }
   }
 
   _cancelTask(task: Task) {
+    const schedule = task.state !== RUNNING;
     const error = new Error("Task has been canceled");
     taskThrow(task, error);
     if (task.waitHandles) {
       this._cancelWaits(task, task.waitHandles);
       delete task.waitHandles;
+    }
+    if (schedule) {
+      this.queue.schedule(task);
     }
   }
 
@@ -337,7 +379,9 @@ export default class Runner {
       if (handle.taskId && handle.cancelTask) {
         const dependent = this.tasks[handle.taskId];
         invariant(dependent, "Internal error: invalid WaitHandle taskId");
-        this._cancelTask(dependent);
+        if (dependent.state !== DONE) {
+          this._cancelTask(dependent);
+        }
       }
     });
   }
