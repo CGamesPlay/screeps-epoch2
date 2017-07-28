@@ -79,7 +79,7 @@ export class TaskHandle {
 
   cancel() {
     const task = ((this: any)[taskSymbol]: Task);
-    return ((this: any)[runnerSymbol]: Runner)._cancelTask(task);
+    return ((this: any)[runnerSymbol]: Runner).cancel(task);
   }
 
   error(): ?Error {
@@ -177,6 +177,20 @@ export default class Runner {
     return this._getTaskHandle(task);
   }
 
+  cancel(task: Task) {
+    if (task.state === DONE) return;
+    const schedule = task.state !== RUNNING;
+    const error = new Error("Task has been canceled");
+    taskThrow(task, error);
+    if (task.waitHandles) {
+      this._cancelWaits(task, task.waitHandles);
+      delete task.waitHandles;
+    }
+    if (schedule) {
+      this.queue.schedule(task);
+    }
+  }
+
   isActive() {
     return _.any(this.tasks);
   }
@@ -184,6 +198,10 @@ export default class Runner {
   step() {
     var task;
     while ((task = this.queue.getNext())) {
+      invariant(
+        task.state === RUNNING,
+        "Internal error: task should not be scheduled",
+      );
       this._stepTask(task);
       if (task.state === DONE) {
         this._applyDecrement(
@@ -221,7 +239,8 @@ export default class Runner {
         ({ done, value } = (task.generator: any)[method](param));
       } catch (error) {
         Object.assign(task, { state: DONE, error });
-        this.queue.taskDidFinish(task, null, error);
+        this.queue.taskDidFinish(task, void 0, error);
+        break;
       }
       if (done) {
         Object.assign(task, { state: DONE, result: value });
@@ -291,6 +310,7 @@ export default class Runner {
         this._notifyTask(target, handle, null, true);
       }
     });
+    waitList.splice(0, waitList.length);
   }
 
   _notifySemaphoreDestroyed(semaphore: Semaphore) {
@@ -352,19 +372,6 @@ export default class Runner {
     }
   }
 
-  _cancelTask(task: Task) {
-    const schedule = task.state !== RUNNING;
-    const error = new Error("Task has been canceled");
-    taskThrow(task, error);
-    if (task.waitHandles) {
-      this._cancelWaits(task, task.waitHandles);
-      delete task.waitHandles;
-    }
-    if (schedule) {
-      this.queue.schedule(task);
-    }
-  }
-
   _cancelWaits(task: Task, handles: Array<WaitHandle>) {
     handles.forEach(handle => {
       if (handle.semaphore) {
@@ -380,7 +387,7 @@ export default class Runner {
         const dependent = this.tasks[handle.taskId];
         invariant(dependent, "Internal error: invalid WaitHandle taskId");
         if (dependent.state !== DONE) {
-          this._cancelTask(dependent);
+          this.cancel(dependent);
         }
       }
     });
