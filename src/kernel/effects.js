@@ -9,8 +9,11 @@ export const CALL = Symbol("Call");
 export const ALL = Symbol("All");
 export const RACE = Symbol("Race");
 
-export type CallEffect = {
-  type: any,
+export type Effect = {
+  type: typeof SPAWN | typeof JOIN | typeof CALL | typeof ALL | typeof RACE,
+};
+
+export type CallEffect = Effect & {
   context?: any,
   func: Function | string,
   args: Array<any>,
@@ -38,8 +41,12 @@ const createMultiEffect = (args: Array<any>, type: any) => {
   }
 };
 
-export const spawn = (...args: Array<any>) => createCallEffect(args, SPAWN);
-export const join = (task: Task) => ({ type: JOIN, task });
-export const call = (...args: Array<any>) => createCallEffect(args, CALL);
-export const all = (...args: Array<any>) => createMultiEffect(args, ALL);
-export const race = (...args: Array<any>) => createMultiEffect(args, RACE);
+export const spawn = (...args: Array<any>): Effect =>
+  createCallEffect(args, SPAWN);
+export const join = (task: Task): Effect => ({ type: JOIN, task });
+export const call = (...args: Array<any>): Effect =>
+  createCallEffect(args, CALL);
+export const all = (...args: Array<Effect>): Effect =>
+  createMultiEffect(args, ALL);
+export const race = (...args: Array<Effect>): Effect =>
+  createMultiEffect(args, RACE);

@@ -5,9 +5,9 @@ import _ from "lodash";
 import { SPAWN, JOIN, CALL, RACE, ALL, call, all } from "./effects";
 import Semaphore, * as semaphores from "./Semaphore";
 import invariant from "./invariant";
-import type { CallEffect } from "./effects";
+import type { Effect, CallEffect } from "./effects";
 
-export type TaskGenerator<T = any> = Generator<any, any, T>;
+export type TaskGenerator<T = any> = Generator<Effect, any, T>;
 
 const RUNNING = "r";
 const WAITING = "w";
