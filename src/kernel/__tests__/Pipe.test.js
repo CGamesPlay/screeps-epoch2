@@ -54,7 +54,7 @@ function* genClose() {
     yield call([pipe, "write"], "three");
     expect(false).toBe(true);
   } catch (err) {
-    expect(err.message).toBe("Semaphore has been destroyed");
+    expect(err.message).toBe("Pipe has been closed");
   }
   // Reads still succeed while there is buffered data.
   let result = yield call([pipe, "read"]);
@@ -66,7 +66,7 @@ function* genClose() {
     yield call([pipe, "read"]);
     expect(false).toBe(true);
   } catch (err) {
-    expect(err.message).toBe("Semaphore has been destroyed");
+    expect(err.message).toBe("Pipe has been closed");
   }
 
   // Both ends are closed immediately when no data is pending.
@@ -76,7 +76,7 @@ function* genClose() {
     yield call([pipe, "read"]);
     expect(false).toBe(true);
   } catch (err) {
-    expect(err.message).toBe("Semaphore has been destroyed");
+    expect(err.message).toBe("Pipe has been closed");
   }
 }
 

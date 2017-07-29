@@ -1,6 +1,6 @@
 // @flow
 
-import type { Task } from "./Runner";
+import type { TaskHandle as Task } from "./Runner";
 import type Semaphore from "./Semaphore";
 
 export const SPAWN = Symbol("Spawn");

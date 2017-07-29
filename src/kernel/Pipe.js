@@ -2,6 +2,7 @@
 
 import type { TaskGenerator } from "./Runner";
 import Semaphore from "./Semaphore";
+import invariant from "./invariant";
 import { all, call } from "./effects";
 
 export const BLOCK = "b";
@@ -9,6 +10,8 @@ export const KEEP_NEWEST = "n";
 export const KEEP_OLDEST = "o";
 
 type OverflowMode = typeof BLOCK | typeof KEEP_NEWEST | typeof KEEP_OLDEST;
+
+const pipeClosedMessage = "Pipe has been closed";
 
 export default class Pipe<T> {
   static *create(bufferSize: ?number = 1, overflowMode: OverflowMode = BLOCK) {
@@ -32,6 +35,9 @@ export default class Pipe<T> {
   }
 
   *write(value: any): TaskGenerator<> {
+    if (!this.empty.active()) {
+      throw new Error(pipeClosedMessage);
+    }
     let hasEmpty = yield call(
       [this.empty, this.overflowMode === BLOCK ? "decrement" : "tryDecrement"],
       1,
@@ -51,6 +57,9 @@ export default class Pipe<T> {
   }
 
   *read(): TaskGenerator<T> {
+    if (!this.ready.active()) {
+      throw new Error(pipeClosedMessage);
+    }
     yield call([this.ready, "decrement"], 1);
     let value = this.buffer.shift();
     if (this.open()) {
@@ -62,7 +71,7 @@ export default class Pipe<T> {
   }
 
   hasData(): boolean {
-    return this.ready.value() > 0;
+    return this.ready.active() && this.ready.value() > 0;
   }
 
   open(): boolean {
@@ -74,5 +83,9 @@ export default class Pipe<T> {
     if (!this.hasData()) {
       this.ready.destroy();
     }
+  }
+
+  closeOnExit() {
+    this.empty.destroyOnExit();
   }
 }

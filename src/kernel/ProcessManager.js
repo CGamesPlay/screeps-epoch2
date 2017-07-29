@@ -1,8 +1,9 @@
 // @flow
 
 import type { RunQueue, Task, TaskGenerator } from "./Runner";
+import type Semaphore from "./Semaphore";
 
-import Runner from "./Runner";
+import Runner, { TaskHandle } from "./Runner";
 import invariant from "./invariant";
 import { spawn, join } from "./effects";
 
@@ -61,10 +62,16 @@ export class ProcessHandle {
 
   *wait(): TaskGenerator<> {
     const task = getProcess(this).tasks[0];
+    if (!task) return true;
+    const handle = new TaskHandle(ProcessManager.current.runner, task);
     try {
-      yield join(task);
+      yield join(handle);
     } catch (err) {}
     return true;
+  }
+
+  cancel() {
+    getProcess(this).cancelTasks();
   }
 }
 
@@ -73,10 +80,12 @@ class Process {
   result: any;
   error: ?Error;
   tasks: Array<Task>;
+  ownedSemaphores: Array<Semaphore>;
 
   constructor(id: number) {
     this.id = id;
     this.tasks = [];
+    this.ownedSemaphores = [];
   }
 
   addTask(task: Task) {
@@ -87,16 +96,24 @@ class Process {
     if (this.tasks[0] === task) {
       this.error = error;
       this.result = result;
-      this._cancelTasks();
+      this.cancelTasks();
     }
     _.remove(this.tasks, task);
+    if (this.finished()) {
+      this.ownedSemaphores.forEach(s => s.destroy());
+      this.ownedSemaphores = [];
+    }
   }
 
   finished(): boolean {
     return this.tasks.length === 0;
   }
 
-  _cancelTasks() {
+  destroyOnExit(sem: Semaphore) {
+    this.ownedSemaphores.push(sem);
+  }
+
+  cancelTasks() {
     this.tasks.forEach(t => ProcessManager.current.runner.cancel(t));
   }
 }
@@ -158,7 +175,6 @@ export default class ProcessManager implements RunQueue {
     invariant(process, "Internal Error: no current process");
     process.taskDidFinish(task, result, error);
     if (process.finished()) {
-      // Clean up anything needed
       delete this.processes[process.id];
     }
   }

@@ -1,6 +1,7 @@
 // @flow
 
 import invariant from "./invariant";
+import ProcessManager from "./ProcessManager";
 
 import type Runner from "./Runner";
 
@@ -51,6 +52,12 @@ export default class Semaphore {
       destroy(this);
       getRunner(this)._notifySemaphoreDestroyed(this);
     }
+  }
+
+  destroyOnExit() {
+    const process = ProcessManager.current.currentProcess;
+    invariant(process, "No current process");
+    process.destroyOnExit(this);
   }
 }
 
