@@ -3,6 +3,10 @@ import Semaphore from "../Semaphore";
 import { defer, spawn, join, call, all } from "../effects";
 import invariant from "../invariant";
 
+function* genNaming() {
+  expect(Process.current().name()).toBe("genNaming");
+}
+
 function* genTaskTracking() {
   expect(Process.current().id()).toBe(1);
   let process = yield call(Process.start, genTaskTrackingChild, 2);
@@ -53,7 +57,7 @@ function* genWaitingChild(lock, error) {
 
 const runGenerator = gen => {
   const manager = new ProcessManager();
-  const process = manager.startProcess(gen);
+  const process = manager.startProcess(gen(), gen.name);
   let steps = 0;
   while (manager.runner.isActive()) {
     steps += 1;
@@ -71,18 +75,22 @@ const runGenerator = gen => {
 };
 
 describe("ProcessManager", () => {
+  it("records the name", () => {
+    runGenerator(genNaming);
+  });
+
   it("tracks the process ID of tasks", () => {
-    runGenerator(genTaskTracking());
+    runGenerator(genTaskTracking);
   });
 
   it("allows waiting on processes", () => {
-    runGenerator(genWaiting());
+    runGenerator(genWaiting);
   });
 
   it("can be serialized", () => {
     expect.assertions(5);
     let manager = new ProcessManager();
-    manager.startProcess(genTaskTracking());
+    manager.startProcess(genTaskTracking(), genTaskTracking.name);
     manager.runner.step();
     manager = reserialize(manager);
     manager.runner.step();

@@ -29,7 +29,7 @@ export class ProcessHandle {
     if (!result || typeof result.next !== "function") {
       result = genIdentity(result);
     }
-    const process = ProcessManager.current.startProcess(result);
+    const process = ProcessManager.current.startProcess(result, func.name);
     return new ProcessHandle(process);
   }
 
@@ -47,6 +47,10 @@ export class ProcessHandle {
 
   id(): number {
     return getProcess(this).id;
+  }
+
+  name(): string {
+    return getProcess(this).name;
   }
 
   finished(): boolean {
@@ -84,6 +88,7 @@ Marshal.registerType(
 
 class Process {
   id: number;
+  name: string;
   result: any;
   error: ?Error;
   mainTask: Task;
@@ -93,6 +98,7 @@ class Process {
   static serialize(p: Process) {
     return {
       i: p.id,
+      n: p.name,
       r: p.result,
       e: p.error,
       m: p.mainTask,
@@ -104,6 +110,7 @@ class Process {
   static deserialize(data): Process {
     return Object.assign(Object.create(Process.prototype), {
       id: data.i,
+      name: data.n,
       result: data.r,
       error: data.e,
       mainTask: data.m,
@@ -112,8 +119,9 @@ class Process {
     });
   }
 
-  constructor(id: number) {
+  constructor(id: number, name: string) {
     this.id = id;
+    this.name = name;
     this.result = this.error = void 0;
     this.tasks = [];
     this.ownedSemaphores = [];
@@ -197,10 +205,13 @@ export default class ProcessManager implements RunQueue {
     this.taskMap = {};
   }
 
-  startProcess(generator: TaskGenerator<>): Process {
+  startProcess(generator: TaskGenerator<>, name: string): Process {
     while (this.processes[this.nextId]) this.nextId += 1;
     const parent = this.currentProcess;
-    const process = (this.processes[this.nextId] = new Process(this.nextId));
+    const process = (this.processes[this.nextId] = new Process(
+      this.nextId,
+      name,
+    ));
     this._enterProcess(process);
     this.runner.run(generator);
     this._enterProcess(parent);
