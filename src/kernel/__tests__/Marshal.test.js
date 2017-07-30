@@ -24,17 +24,6 @@ function* genReferences() {
   expect(param.str).to.equal(" inner1 inner2");
 }
 
-function reserialize(value) {
-  var memory = { heap: {}, ref: null };
-  var marshal = new Marshal(memory.heap);
-  memory.ref = marshal.serialize(value);
-
-  memory = JSON.parse(JSON.stringify(memory));
-  marshal = new Marshal(memory.heap);
-  const result = marshal.deserialize(memory.ref);
-  return result;
-}
-
 describe("Marshal", () => {
   it("serializes simple values", () => {
     let value = "this is a test";

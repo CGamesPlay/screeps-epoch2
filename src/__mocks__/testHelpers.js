@@ -1,4 +1,20 @@
+// @flow
+
+import Marshal from "../kernel/Marshal";
 import Runner from "../kernel/Runner";
+
+const reserialize = value => {
+  var memory = { heap: {}, ref: null };
+  var marshal = new Marshal(memory.heap);
+  memory.ref = marshal.serialize(value);
+
+  memory = JSON.parse(JSON.stringify(memory));
+  marshal = new Marshal(memory.heap);
+  const result = marshal.deserialize(memory.ref);
+  return result;
+};
+
+global.reserialize = reserialize;
 
 const runGenerator = gen => {
   const runner = new Runner();
