@@ -1,26 +1,28 @@
+// @flow
+
 import Marshal from "./Marshal";
+import ProcessManager from "./ProcessManager";
 import main from "../main";
 
 export const loop = () => {
-  var marshal, thread;
+  let marshal: ?Marshal, manager: ?ProcessManager;
   try {
     Memory.heap = Memory.heap || {};
     marshal = new Marshal(Memory.heap);
-    if (Memory.thread) {
-      thread = marshal.deserialize(Memory.thread);
+    if (Memory.manager) {
+      manager = marshal.deserialize(Memory.manager);
     }
   } finally {
     delete Memory.heap;
-    delete Memory.thread;
+    delete Memory.manager;
   }
 
-  if (!thread) {
-    thread = main();
+  if (!manager) {
+    manager = new ProcessManager();
+    manager.startProcess(main());
   }
 
-  let result = thread.next();
-  if (!result.done) {
-    Memory.thread = marshal.serialize(thread);
-    Memory.heap = marshal.heap;
-  }
+  manager.runner.step();
+  Memory.manager = marshal.serialize(manager);
+  Memory.heap = marshal.heap;
 };

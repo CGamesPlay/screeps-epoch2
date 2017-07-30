@@ -6,6 +6,7 @@ import { SPAWN, JOIN, CALL, RACE, ALL, call, all } from "./effects";
 import Semaphore, * as semaphores from "./Semaphore";
 import invariant from "./invariant";
 import type { Effect, CallEffect } from "./effects";
+import Marshal from "./Marshal";
 
 export type TaskGenerator<T = any> = Generator<Effect, any, T>;
 
@@ -122,6 +123,16 @@ export interface RunQueue {
 class BasicRunQueue {
   queue: Array<Task>;
 
+  static serialize(q: BasicRunQueue) {
+    return { q: q.queue };
+  }
+
+  static deserialize(data) {
+    return Object.assign(Object.create(BasicRunQueue.prototype), {
+      queue: data.q,
+    });
+  }
+
   constructor() {
     this.queue = [];
   }
@@ -142,6 +153,8 @@ class BasicRunQueue {
   taskDidFinish(task: Task, result: any, error: ?Error) {}
 }
 
+Marshal.registerType(BasicRunQueue);
+
 function* genIdentity(x: any) {
   return x;
 }
@@ -151,11 +164,23 @@ function* yieldEffect(effect: any) {
 }
 
 export default class Runner {
+  static serialize(r: Runner) {
+    return { i: r.nextId, t: r.tasks, q: r.queue };
+  }
+
+  static deserialize(data: any): Runner {
+    return Object.assign(Object.create(Runner.prototype), {
+      nextId: data.i,
+      tasks: data.t,
+      queue: data.q,
+    });
+  }
+
   nextId: number;
   queue: RunQueue;
   tasks: { [key: number]: Task };
 
-  constructor(queue: RunQueue) {
+  constructor(queue: ?RunQueue) {
     this.nextId = 1;
     this.queue = queue || new BasicRunQueue();
     this.tasks = {};
@@ -635,3 +660,5 @@ export default class Runner {
     }
   }
 }
+
+Marshal.registerType(Runner);

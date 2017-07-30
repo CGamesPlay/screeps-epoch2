@@ -2,6 +2,7 @@
 
 import invariant from "./invariant";
 import ProcessManager from "./ProcessManager";
+import Marshal from "./Marshal";
 
 import type Runner from "./Runner";
 
@@ -82,3 +83,22 @@ export const decrement = (s: Semaphore, value: number) => {
   }
 };
 export const destroy = (s: Semaphore) => ((s: any)[activeSymbol] = false);
+
+Marshal.registerType(
+  Semaphore,
+  (sem: Semaphore) => ({
+    r: getRunner(sem),
+    v: getValue(sem),
+    a: getActive(sem),
+    d: getDecrementWaitList(sem),
+    z: getZeroWaitList(sem),
+  }),
+  data =>
+    Object.assign(Object.create(Semaphore.prototype), {
+      [(runnerSymbol: any)]: data.r,
+      [(valueSymbol: any)]: data.v,
+      [(activeSymbol: any)]: data.a,
+      [(decrementWaitListSymbol: any)]: data.d,
+      [(zeroWaitListSymbol: any)]: data.z,
+    }),
+);

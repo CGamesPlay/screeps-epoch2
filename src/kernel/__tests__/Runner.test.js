@@ -272,6 +272,11 @@ function* genSemaphoreDestroyChild(sem) {
   sem.destroy();
 }
 
+function* genSemaphoreMarshal() {
+  const sem = yield call(Semaphore.create, 0);
+  expect(reserialize(sem)).toEqual(sem);
+}
+
 describe("Runner", () => {
   it("handles call effects", () => {
     const actual = [];
@@ -334,6 +339,10 @@ describe("Runner", () => {
 
     it("can be destroyed", () => {
       runGenerator(genSemaphoreDestroy());
+    });
+
+    it("can be marshaled", () => {
+      runGenerator(genSemaphoreMarshal());
     });
   });
 });

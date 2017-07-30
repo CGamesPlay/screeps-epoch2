@@ -52,15 +52,14 @@ function* genWaitingChild(lock, error) {
 
 const runGenerator = gen => {
   const manager = new ProcessManager();
-  const runner = manager.runner;
   const process = manager.startProcess(gen);
   let steps = 0;
-  while (runner.isActive()) {
+  while (manager.runner.isActive()) {
     steps += 1;
     if (steps > 100) {
       throw new Error("Timed out after 100 steps");
     }
-    runner.step();
+    manager.runner.step();
   }
   invariant(process.finished(), "Process did not finish");
   if (process.error) {
@@ -77,5 +76,13 @@ describe("ProcessManager", () => {
 
   it("allows waiting on processes", () => {
     runGenerator(genWaiting());
+  });
+
+  it("can be serialized", () => {
+    expect.assertions(5);
+    let manager = new ProcessManager();
+    manager.startProcess(genTaskTracking());
+    manager = reserialize(manager);
+    manager.runner.step();
   });
 });

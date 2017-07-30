@@ -6,6 +6,7 @@ import type Semaphore from "./Semaphore";
 import Runner, { TaskHandle } from "./Runner";
 import invariant from "./invariant";
 import { spawn, join } from "./effects";
+import Marshal from "./Marshal";
 
 const processSymbol = Symbol("Id");
 const getProcess = (handle: ProcessHandle): Process =>
@@ -82,8 +83,29 @@ class Process {
   tasks: Array<Task>;
   ownedSemaphores: Array<Semaphore>;
 
+  static serialize(p: Process) {
+    return {
+      i: p.id,
+      r: p.result,
+      e: p.error,
+      t: p.tasks,
+      s: p.ownedSemaphores,
+    };
+  }
+
+  static deserialize(data): Process {
+    return Object.assign(Object.create(Process.prototype), {
+      id: data.i,
+      result: data.r,
+      error: data.e,
+      tasks: data.t,
+      ownedSemaphores: data.s,
+    });
+  }
+
   constructor(id: number) {
     this.id = id;
+    this.result = this.error = void 0;
     this.tasks = [];
     this.ownedSemaphores = [];
   }
@@ -118,8 +140,35 @@ class Process {
   }
 }
 
+Marshal.registerType(Process);
+
 export default class ProcessManager implements RunQueue {
   static current: ProcessManager;
+
+  static serialize(m: ProcessManager) {
+    return {
+      i: m.nextId,
+      p: _.values(m.processes),
+      q: m.queue,
+      r: m.runner,
+    };
+  }
+
+  static deserialize(data) {
+    return Object.assign(Object.create(ProcessManager.prototype), {
+      nextId: data.i,
+      processes: data.p.reduce((list, p) => {
+        list[p.id] = p;
+        return list;
+      }, {}),
+      runner: data.r,
+      queue: data.q,
+      taskMap: data.p.reduce((list, p) => {
+        p.tasks.forEach(t => (list[t.id] = p.id));
+        return list;
+      }, {}),
+    });
+  }
 
   currentProcess: ?Process;
   nextId: number;
@@ -173,6 +222,7 @@ export default class ProcessManager implements RunQueue {
   taskDidFinish(task: Task, result: any, error: ?Error) {
     const process = this.currentProcess;
     invariant(process, "Internal Error: no current process");
+    delete this.taskMap[task.id];
     process.taskDidFinish(task, result, error);
     if (process.finished()) {
       delete this.processes[process.id];
@@ -184,3 +234,5 @@ export default class ProcessManager implements RunQueue {
     this.currentProcess = process;
   }
 }
+
+Marshal.registerType(ProcessManager);
