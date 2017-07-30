@@ -76,10 +76,17 @@ export class ProcessHandle {
   }
 }
 
+Marshal.registerType(
+  ProcessHandle,
+  (h: ProcessHandle) => ({ p: getProcess(h) }),
+  data => new ProcessHandle(data.p),
+);
+
 class Process {
   id: number;
   result: any;
   error: ?Error;
+  mainTask: Task;
   tasks: Array<Task>;
   ownedSemaphores: Array<Semaphore>;
 
@@ -88,6 +95,7 @@ class Process {
       i: p.id,
       r: p.result,
       e: p.error,
+      m: p.mainTask,
       t: p.tasks,
       s: p.ownedSemaphores,
     };
@@ -98,6 +106,7 @@ class Process {
       id: data.i,
       result: data.r,
       error: data.e,
+      mainTask: data.m,
       tasks: data.t,
       ownedSemaphores: data.s,
     });
@@ -111,11 +120,14 @@ class Process {
   }
 
   addTask(task: Task) {
+    if (this.tasks.length === 0) {
+      this.mainTask = task;
+    }
     this.tasks.push(task);
   }
 
   taskDidFinish(task: Task, result: any, error: ?Error) {
-    if (this.tasks[0] === task) {
+    if (this.mainTask === task) {
       this.error = error;
       this.result = result;
       this.cancelTasks();

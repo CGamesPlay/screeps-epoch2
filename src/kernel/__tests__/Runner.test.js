@@ -199,6 +199,11 @@ function* genTaskCancelChild2(lock) {
   yield call([lock, "decrement"], 1);
 }
 
+function* genTaskMarshal() {
+  const task = yield spawn(genTaskResult);
+  expect(reserialize(task)).toEqual(task);
+}
+
 function* genSemaphoreDecrementImmediate() {
   const sem = yield call(Semaphore.create, 2);
   expect(sem.value()).toBe(2);
@@ -329,11 +334,17 @@ describe("Runner", () => {
     it("returns a result", () => {
       runGenerator(genTaskResult());
     });
+
     it("throws an error", () => {
       runGenerator(genTaskError());
     });
+
     it("can be canceled", () => {
       runGenerator(genTaskCancel());
+    });
+
+    it("can be marshaled", () => {
+      runGenerator(genTaskMarshal());
     });
   });
 

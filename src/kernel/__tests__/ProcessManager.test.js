@@ -1,11 +1,12 @@
 import ProcessManager, { ProcessHandle as Process } from "../ProcessManager";
 import Semaphore from "../Semaphore";
-import { spawn, join, call, all } from "../effects";
+import { defer, spawn, join, call, all } from "../effects";
 import invariant from "../invariant";
 
 function* genTaskTracking() {
   expect(Process.current().id()).toBe(1);
   let process = yield call(Process.start, genTaskTrackingChild, 2);
+  yield defer();
   expect(Process.current().id()).toBe(1);
   expect(process.id()).toBe(2);
   yield call(genTaskTrackingChild, 1);
@@ -82,6 +83,7 @@ describe("ProcessManager", () => {
     expect.assertions(5);
     let manager = new ProcessManager();
     manager.startProcess(genTaskTracking());
+    manager.runner.step();
     manager = reserialize(manager);
     manager.runner.step();
   });

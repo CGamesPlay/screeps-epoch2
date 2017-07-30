@@ -12,7 +12,7 @@ const Generator = (function*() {})().constructor;
 const extendError = (err, message) => {
   return Object.assign(new Error(), err, {
     message: `${err.message}\n  ${message}`,
-    stack: err.stack,
+    stack: err.stack.replace(/\n/, `\n  ${message}\n`),
   });
 };
 
@@ -113,8 +113,6 @@ export default class Marshal {
       return value;
     } else if (typeof value === "object") {
       return this.serializeReference(value);
-    } else if (typeof value === "function") {
-      return void 0;
     } else {
       throw new Error("Unable to serialize " + typeof value);
     }
@@ -209,19 +207,25 @@ export default class Marshal {
         }
       }
 
+      let failedKey = null;
       try {
         if (ctor && ctor.serialize) {
           object = ctor.serialize(object);
         }
         serialized = {};
         Object.getOwnPropertyNames(object).forEach(k => {
+          failedKey = k;
           serialized[k] = this.serialize(object[k]);
+          failedKey = null;
         });
       } catch (err) {
-        if (name) {
-          throw extendError(err, `(while serializing ${name})`);
+        if (failedKey) {
+          throw extendError(
+            err,
+            `(while serializing ${name || "Object"}'s ${failedKey})`,
+          );
         } else {
-          throw err;
+          throw extendError(err, `(while serializing ${name || "Object"})`);
         }
       }
 
@@ -289,6 +293,12 @@ Marshal.registerType(
   regeneratorRuntime.serializeGenerator,
   regeneratorRuntime.deserializeGenerator,
   "@gen",
+);
+
+Marshal.registerType(
+  Error,
+  (e: Error) => Object.assign(({ message: e.message, stack: e.stack }: any), e),
+  (data): Error => Object.assign(Object.create(Error.prototype), data),
 );
 
 function createProxy(ctor, name, id, data) {

@@ -93,6 +93,12 @@ export class TaskHandle {
   }
 }
 
+Marshal.registerType(
+  TaskHandle,
+  (h: any) => ({ r: h[runnerSymbol], t: h[taskSymbol] }),
+  data => new TaskHandle(data.r, data.t),
+);
+
 const taskNext = (task: Task, value: any) =>
   Object.assign(task, { state: RUNNING, next: ["next", value] });
 const taskThrow = (task: Task, error: Error) =>
@@ -471,7 +477,10 @@ export default class Runner {
         func = value.context[func];
       }
     }
-    if (typeof func !== "function") {
+    // $FlowFixMe: 0.51.0 doesn't support typeof symbol
+    if (typeof func === "symbol") {
+      return this._applyCallBuiltin(task, func, value.context, value.args, cb);
+    } else if (typeof func !== "function") {
       return cb(null, new Error("Provided function is not callable"));
     }
     try {
