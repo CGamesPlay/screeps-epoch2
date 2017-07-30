@@ -2,7 +2,7 @@
 
 import _ from "lodash";
 
-import { SPAWN, JOIN, CALL, RACE, ALL, call, all } from "./effects";
+import { DEFER, SPAWN, JOIN, CALL, RACE, ALL, call, all } from "./effects";
 import Semaphore, * as semaphores from "./Semaphore";
 import invariant from "./invariant";
 import type { Effect, CallEffect } from "./effects";
@@ -32,6 +32,7 @@ const SEMAPHORE_ZERO = "z";
 type SemaphoreWaitMode = typeof SEMAPHORE_DECREMENT | typeof SEMAPHORE_ZERO;
 
 type WaitHandlePre = {
+  defer?: boolean,
   taskId?: number,
   semaphore?: Semaphore,
   mode?: SemaphoreWaitMode,
@@ -165,7 +166,7 @@ function* yieldEffect(effect: any) {
 
 export default class Runner {
   static serialize(r: Runner) {
-    return { i: r.nextId, t: r.tasks, q: r.queue };
+    return { i: r.nextId, t: r.tasks, q: r.queue, d: r.deferred };
   }
 
   static deserialize(data: any): Runner {
@@ -173,16 +174,19 @@ export default class Runner {
       nextId: data.i,
       tasks: data.t,
       queue: data.q,
+      deferred: data.d,
     });
   }
 
   nextId: number;
   queue: RunQueue;
+  deferred: Array<number>;
   tasks: { [key: number]: Task };
 
   constructor(queue: ?RunQueue) {
     this.nextId = 1;
     this.queue = queue || new BasicRunQueue();
+    this.deferred = [];
     this.tasks = {};
   }
 
@@ -221,6 +225,8 @@ export default class Runner {
   }
 
   step() {
+    _.forEach(this.deferred, id => this._notifyDeferred(this.tasks[id]));
+    this.deferred = [];
     var task;
     while ((task = this.queue.getNext())) {
       invariant(
@@ -286,6 +292,12 @@ export default class Runner {
       this.queue.schedule(task);
     }
     return progressed;
+  }
+
+  _notifyDeferred(task: Task) {
+    const handle = _.find(task.waitHandles, h => h.defer);
+    invariant(handle, "Internal error: invalid waitHandles");
+    this._notifyTask(task, handle, null, true);
   }
 
   _notifySemaphorePositive(semaphore: Semaphore) {
@@ -415,6 +427,9 @@ export default class Runner {
           this.cancel(dependent);
         }
       }
+      if (handle.defer) {
+        _.remove(this.deferred, x => x === task.id);
+      }
     });
   }
 
@@ -424,6 +439,8 @@ export default class Runner {
     }
     if (!value) {
       cb(value);
+    } else if (value.type === DEFER) {
+      this._applyDefer(task, cb);
     } else if (value.type === SPAWN) {
       this._applySpawn(task, value, cb);
     } else if (value.type === JOIN) {
@@ -437,6 +454,11 @@ export default class Runner {
     } else {
       cb(value);
     }
+  }
+
+  _applyDefer(task: Task, cb: EffectResultCallback) {
+    this.deferred.push(task.id);
+    cb(null, null, { defer: true });
   }
 
   _applySpawn(task: Task, value: CallEffect, cb: EffectResultCallback) {

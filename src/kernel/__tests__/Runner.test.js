@@ -1,9 +1,20 @@
 import Runner from "../Runner";
 import Semaphore from "../Semaphore";
 import Pipe from "../Pipe";
-import { spawn, join, call, all, race } from "../effects";
+import { defer, spawn, join, call, all, race } from "../effects";
 
 const identity = x => x;
+
+function* genDefer() {
+  expect.assertions(2);
+  const start = runnerFakeTime;
+  // Defer causes a step to happen
+  yield defer();
+  expect(runnerFakeTime).toBe(start + 1);
+  // Non-blocking effects do not
+  yield null;
+  expect(runnerFakeTime).toBe(start + 1);
+}
 
 function* genNoOps() {
   let result = yield null;
@@ -278,6 +289,12 @@ function* genSemaphoreMarshal() {
 }
 
 describe("Runner", () => {
+  describe("defer", () => {
+    it("pauses and resumes for one step", () => {
+      runGenerator(genDefer());
+    });
+  });
+
   it("handles call effects", () => {
     const actual = [];
     runGenerator(genCall(actual));

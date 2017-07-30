@@ -17,16 +17,17 @@ const reserialize = value => {
 global.reserialize = reserialize;
 
 const runGenerator = gen => {
+  global.runnerFakeTime = 0;
   const runner = new Runner();
-  var steps = 0;
   let task = runner.run(gen);
   while (runner.isActive()) {
-    steps += 1;
-    if (steps > 100) {
+    global.runnerFakeTime += 1;
+    if (global.runnerFakeTime > 100) {
       throw new Error("Timed out after 100 steps");
     }
     runner.step();
   }
+  global.runnerFakeTime = void 0;
   if (task.error()) {
     throw task.error();
   } else {
