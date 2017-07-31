@@ -8,6 +8,10 @@ import invariant from "./invariant";
 import { spawn, join } from "./effects";
 import Marshal from "./Marshal";
 
+const TICK_FINISH_TIME = 100;
+const shouldEndTick = () =>
+  Game.cpu.getUsed() + TICK_FINISH_TIME >= Game.cpu.tickLimit;
+
 const processSymbol = Symbol("Id");
 const getProcess = (handle: ProcessHandle): Process =>
   (handle: any)[processSymbol];
@@ -223,6 +227,7 @@ export default class ProcessManager implements RunQueue {
   }
 
   getNext(): ?Task {
+    if (shouldEndTick()) return null;
     const task = this.queue.shift();
     if (!task) return null;
     const process = this.processes[this.taskMap[task.id]];
@@ -232,7 +237,7 @@ export default class ProcessManager implements RunQueue {
   }
 
   shouldInterrupt(task: Task): boolean {
-    return false;
+    return shouldEndTick();
   }
 
   taskDidStart(task: Task) {
