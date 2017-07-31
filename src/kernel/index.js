@@ -9,3 +9,4 @@ export { default as Pipe } from "./Pipe";
 export { ProcessHandle as Process } from "./ProcessManager";
 export { default as Connection } from "./Connection";
 export { default as invariant } from "./invariant";
+export { isAvailable } from "./Marshal";

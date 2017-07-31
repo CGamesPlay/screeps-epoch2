@@ -175,8 +175,17 @@ var map = {
   },
 };
 
+var cpu = {
+  limit: 100,
+  tickLimit: 500,
+  bucket: 10000,
+  getUsed: () => 0,
+};
+
 global.Game = {
   map,
+  cpu,
+  getObjectById: id => null,
 };
 
 global.RoomPosition = class RoomPosition {

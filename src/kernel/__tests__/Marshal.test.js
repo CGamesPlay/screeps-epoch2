@@ -1,4 +1,4 @@
-import Marshal from "../Marshal";
+import Marshal, { isAvailable } from "../Marshal";
 
 function* genDelegation(recurse) {
   yield 1;
@@ -69,5 +69,64 @@ describe("Marshal", () => {
       if (obj.done) break;
       thread = reserialize(thread);
     }
+  });
+
+  it("garbage collects", () => {
+    var rawMemory = JSON.stringify(null);
+    const withMarshal = (cb, stats) => {
+      let memory = JSON.parse(rawMemory);
+      let marshal = new Marshal(memory);
+      cb(marshal.getRoot(), marshal);
+      rawMemory = JSON.stringify(marshal.serialize());
+    };
+
+    withMarshal((root, marshal) => {
+      root.value = {};
+      root.value.a = { a: "a", nested: { nested: [1, 2] } };
+      root.value.b = { b: "b" };
+      expect(marshal.stats).toEqual({ live: 1, frozen: 0 });
+    });
+
+    withMarshal((root, marshal) => {
+      expect(marshal.stats).toEqual({ live: 0, frozen: 6 });
+      delete root.value.b;
+    });
+
+    withMarshal((root, marshal) => {
+      expect(root.value.a).toEqual({ a: "a", nested: { nested: [1, 2] } });
+      expect(marshal.stats).toEqual({ live: 5, frozen: 0 });
+      root.value.a.nested = root.value.a;
+    });
+
+    withMarshal((root, marshal) => {
+      expect(marshal.stats).toEqual({ live: 0, frozen: 3 });
+    });
+
+    withMarshal((root, marshal) => {
+      expect(root.value.a).toBe(root.value.a.nested);
+      expect(marshal.stats).toEqual({ live: 3, frozen: 0 });
+
+      delete root.value;
+      root.shallow = { foo: true };
+      root.unused = { deep: root.shallow };
+    });
+
+    withMarshal((root, marshal) => {
+      expect(root.shallow).toEqual({ foo: true });
+      expect(marshal.stats).toEqual({ live: 2, frozen: 1 });
+    });
+
+    withMarshal((root, marshal) => {
+      expect(marshal.stats).toEqual({ live: 0, frozen: 3 });
+      expect(root.shallow).toBe(root.unused.deep);
+    });
+  });
+
+  it("creates missing object references", () => {
+    let base = Object.assign(Object.create(RoomObject.prototype), {
+      id: "1234",
+    });
+    let value = reserialize(base);
+    expect(isAvailable(value)).toBe(false);
   });
 });

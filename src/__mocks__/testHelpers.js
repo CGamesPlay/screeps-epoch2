@@ -4,14 +4,11 @@ import Marshal from "../kernel/Marshal";
 import Runner from "../kernel/Runner";
 
 const reserialize = value => {
-  var memory = { heap: {}, ref: null };
-  var marshal = new Marshal(memory.heap);
-  memory.ref = marshal.serialize(value);
-
+  var marshal = new Marshal();
+  marshal.getRoot().value = value;
+  var memory = marshal.serialize();
   memory = JSON.parse(JSON.stringify(memory));
-  marshal = new Marshal(memory.heap);
-  const result = marshal.deserialize(memory.ref);
-  return result;
+  return new Marshal(memory).getRoot().value;
 };
 
 global.reserialize = reserialize;

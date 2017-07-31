@@ -9,22 +9,17 @@ import main from "../main";
 export const loop = () => {
   let marshal: ?Marshal, manager: ?ProcessManager, mainProcess;
   try {
-    Memory.heap = Memory.heap || {};
     marshal = new Marshal(Memory.heap);
-    if (Memory.manager) {
-      manager = marshal.deserialize(Memory.manager);
-      mainProcess = marshal.deserialize(Memory.mainProcess);
-    }
+    ({ manager, mainProcess } = marshal.getRoot());
 
     if (!manager) {
       console.log("System booting");
       manager = new ProcessManager();
       mainProcess = manager.startProcess(main(), "main");
-      Memory.heap = {};
-      marshal = new Marshal(Memory.heap);
     }
 
     manager.runner.step();
+
     ProcessManager.current = manager;
     console.log(tools.ProcessList.dump());
 
@@ -34,12 +29,9 @@ export const loop = () => {
       throw mainProcess.error;
     }
 
-    Memory.mainProcess = marshal.serialize(mainProcess);
-    Memory.manager = marshal.serialize(manager);
-    Memory.heap = marshal.heap;
+    Object.assign(marshal.getRoot(), { manager, mainProcess });
+    Memory.heap = marshal.serialize();
   } catch (err) {
-    delete Memory.mainProcess;
-    delete Memory.manager;
     delete Memory.heap;
     throw err;
   }

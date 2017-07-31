@@ -2,8 +2,8 @@
 
 import invariant from "./invariant";
 
-const HEAP_TAG_SYMBOL = Symbol("MarshalHeapTag");
 const HEAP_REF_SYMBOL = "@@mhr";
+const IS_UNLOADED_REF = Symbol("IsUnloadedRef");
 const CONSTRUCTOR_SYMBOL = "@@mc";
 const MISSING_OBJECT_SYMBOL = Symbol("IsMissingObject");
 
@@ -22,41 +22,44 @@ type KnownConstructor = {
   deserialize?: (x: any) => any,
 };
 
-function makeHeapRef(ctor: Class<any>, deserialize: () => any) {
+type Heap = {
+  refs: Map<Object, number>,
+  data: Object,
+  nextId: number,
+};
+
+const emptyHeap = {
+  version: 1,
+  [0]: {},
+};
+
+const makeLazyLoader = (ctor: Class<any>, deserialize: () => any) => {
   invariant(ctor, "No constructor specified");
   let reentrant = false,
-    done = false,
-    underlying = Object.create(ctor.prototype);
+    loaded = false,
+    underlying = {};
   const ensureDeserialized = () => {
-    if (done) return;
+    if (loaded) return;
     invariant(!reentrant, "Deserialization triggered infinite loop");
-    reentrant = true;
-    const result = deserialize();
-    if (Object.getPrototypeOf(result) !== ctor.prototype) {
-      Object.setPrototypeOf(underlying, Object.getPrototypeOf(result));
+    try {
+      reentrant = true;
+      underlying = deserialize();
+      loaded = true;
+    } finally {
+      reentrant = false;
     }
-    Object.getOwnPropertyNames(result)
-      .concat(Object.getOwnPropertySymbols(result))
-      .forEach(prop => {
-        Object.defineProperty(
-          underlying,
-          prop,
-          Object.getOwnPropertyDescriptor(result, prop),
-        );
-      });
-    done = true;
-    reentrant = false;
   };
   const handler = {};
   Reflect.ownKeys(Reflect).forEach(
     method =>
       (handler[method] = (a, b, c, d) => {
+        if (method === "get" && b === IS_UNLOADED_REF) return !loaded;
         ensureDeserialized();
-        return (Reflect: any)[method](a, b, c, d);
+        return (Reflect: any)[method](underlying, b, c, d);
       }),
   );
   return new Proxy(underlying, handler);
-}
+};
 
 export default class Marshal {
   static knownConstructors: { [key: string]: KnownConstructor };
@@ -79,30 +82,50 @@ export default class Marshal {
       typeof deserialize === "function",
       "Deserialize function must be provided",
     );
-    if (name in Marshal.knownConstructors) {
-      throw new Error(
-        `Duplicate constructors registered for ${JSON.stringify(name)}`,
-      );
-    }
+    invariant(
+      !(name in Marshal.knownConstructors),
+      `Duplicate constructors registered for ${JSON.stringify(name)}`,
+    );
     Marshal.knownConstructors[name] = { ctor, serialize, deserialize };
   }
 
-  heapCounter: number;
   heap: Object;
   liveHeap: Object;
+  refs: Map<Object, number>;
+  stats: { live: number, frozen: number };
+  root: any;
 
-  constructor(heap: Object) {
-    this.heapCounter = 0;
-    this.heap = heap;
-    if (heap.version && heap.version != 1) {
-      throw new Error("Heap has invalid version");
-    }
-    heap.version = 1;
+  constructor(heap: ?Object) {
+    if (!heap) heap = emptyHeap;
+    invariant(heap.version === 1, "Heap has invalid version");
 
+    this.heap = Object.freeze(heap);
     this.liveHeap = {};
+    this.refs = new Map();
+    this.stats = {
+      frozen: Reflect.ownKeys(heap).reduce(
+        (n, k) => n + (k === "version" ? 0 : 1),
+        0,
+      ),
+      live: 0,
+    };
   }
 
-  serialize(value: any): any {
+  getRoot() {
+    if (!this.root) {
+      this.root = this.deserializeValue({ [HEAP_REF_SYMBOL]: 0 });
+    }
+    return this.root;
+  }
+
+  serialize() {
+    let heap: Heap = { refs: new Map(), data: { version: 1 }, nextId: 0 };
+    let ref = this.serializeValue(this.getRoot(), heap);
+    invariant(ref[HEAP_REF_SYMBOL] === 0, "Root object is not ref 0");
+    return heap.data;
+  }
+
+  serializeValue(value: any, heap: Heap): any {
     if (
       typeof value === "number" ||
       typeof value === "boolean" ||
@@ -112,13 +135,13 @@ export default class Marshal {
     ) {
       return value;
     } else if (typeof value === "object") {
-      return this.serializeReference(value);
+      return this.serializeReference(value, heap);
     } else {
       throw new Error("Unable to serialize " + typeof value);
     }
   }
 
-  deserialize(value: any): any {
+  deserializeValue(value: any): any {
     if (
       typeof value === "number" ||
       typeof value === "boolean" ||
@@ -134,51 +157,61 @@ export default class Marshal {
     }
   }
 
-  serializeReference(object: Object): any {
-    let heapTag = object[HEAP_TAG_SYMBOL];
-    if ((HEAP_TAG_SYMBOL: any) in object) {
-      invariant(
-        !(heapTag in this.liveHeap) || this.liveHeap[heapTag] === object,
-        "Object has been serialized to another heap",
-      );
-    } else {
-      while (this.liveHeap[this.heapCounter] || this.heap[this.heapCounter]) {
-        this.heapCounter += 1;
+  serializeReference(object: Object, heap: Heap): any {
+    let heapTag: ?number = this.refs.get(object);
+    if (heap.refs.has(object)) {
+      return { [HEAP_REF_SYMBOL]: heap.refs.get(object) };
+    } else if (object[IS_UNLOADED_REF] && typeof heapTag === "number") {
+      // heapTag is a reachable but unloaded reference, so transfer this entire
+      // graph to the new heap. References in the unloaded graph may point to
+      // loaded objects, so watch out for that.
+      var queue = [heapTag];
+      while (queue.length > 0) {
+        let targetTag = queue.shift();
+        if (targetTag in this.liveHeap && targetTag !== heapTag) {
+          this.serializeReference(this.liveHeap[targetTag], heap);
+        } else if (!(targetTag in heap.data)) {
+          let target = (heap.data[targetTag] = this.heap[targetTag]);
+          for (let k of Reflect.ownKeys(target)) {
+            if (typeof target[k] === "object" && target[k] !== null) {
+              invariant(target[k][HEAP_REF_SYMBOL], "Unexpected heap value");
+              queue.push(target[k][HEAP_REF_SYMBOL]);
+            }
+          }
+        }
       }
-      heapTag = this.heapCounter;
-      this.heapCounter += 1;
-      Object.defineProperty(object, HEAP_TAG_SYMBOL, {
-        value: heapTag,
-        enumerable: false,
-      });
-      this.liveHeap[heapTag] = object;
+      return { [HEAP_REF_SYMBOL]: heapTag };
+    } else {
+      if (typeof heapTag !== "number") {
+        while (heap.nextId in this.heap || heap.nextId in heap.data) {
+          heap.nextId += 1;
+        }
+        heapTag = heap.nextId;
+      }
+      heap.refs.set(object, heapTag);
+      heap.data[heapTag] = null;
+      heap.data[heapTag] = this.serializeObject(object, heap);
+      return { [HEAP_REF_SYMBOL]: heapTag };
     }
-    if (!this.heap[heapTag]) {
-      // Assign a placeholder so that recursive objects don't blow the stack
-      this.heap[heapTag] = {};
-      this.heap[heapTag] = this.serializeObject(object);
-    }
-    return { [HEAP_REF_SYMBOL]: heapTag };
   }
 
   deserializeReference(ref: any): any {
     var heapTag = ref[HEAP_REF_SYMBOL];
-    if (typeof heapTag !== "number") {
-      throw new Error(`Invalid reference: ${JSON.stringify(ref)}`);
+    invariant(
+      typeof heapTag === "number",
+      `Invalid reference: ${JSON.stringify(ref)}`,
+    );
+    if (!(heapTag in this.liveHeap)) {
+      let object = this.deserializeObject(heapTag);
+      this.refs.set(object, heapTag);
+      this.liveHeap[heapTag] = object;
     }
-    var object = this.liveHeap[heapTag];
-    if (!object) {
-      var data = this.heap[heapTag];
-      delete this.heap[heapTag];
-      if (!data) throw new Error("Invalid heap ref " + heapTag);
-      object = this.liveHeap[heapTag] = this.deserializeObject(heapTag, data);
-    }
-    return object;
+    return this.liveHeap[heapTag];
   }
 
-  serializeObject(object: Object) {
+  serializeObject(object: Object, heap: Heap) {
     if (Array.isArray(object)) {
-      return this.serializeArray(object);
+      return this.serializeArray(object, heap);
     } else {
       let name, ctor, serialized;
       if (
@@ -200,11 +233,10 @@ export default class Marshal {
             ctor = Marshal.knownConstructors[name];
           }
         }
-        if (!ctor) {
-          throw new Error(
-            `Constructor ${object.constructor.name} is not registered`,
-          );
-        }
+        invariant(
+          ctor,
+          `Constructor ${object.constructor.name} is not registered`,
+        );
       }
 
       let failedKey = null;
@@ -215,7 +247,7 @@ export default class Marshal {
         serialized = {};
         Object.getOwnPropertyNames(object).forEach(k => {
           failedKey = k;
-          serialized[k] = this.serialize(object[k]);
+          serialized[k] = this.serializeValue(object[k], heap);
           failedKey = null;
         });
       } catch (err) {
@@ -235,7 +267,9 @@ export default class Marshal {
     }
   }
 
-  deserializeObject(tag: number, data: any): any {
+  deserializeObject(heapTag: number): any {
+    var data = this.heap[heapTag];
+    invariant(data, `Invalid heap ref ${heapTag}`);
     if (Array.isArray(data)) {
       return this.deserializeArray(data);
     } else {
@@ -243,46 +277,46 @@ export default class Marshal {
         ctor: any = {};
       if (name) {
         ctor = Marshal.knownConstructors[name];
-        if (!ctor) {
-          throw new Error(
-            `Invalid object constructor: ${JSON.stringify(name)}`,
-          );
-        }
+        invariant(ctor, `Invalid object constructor: ${JSON.stringify(name)}`);
         data = Object.assign({}, data);
         delete data[CONSTRUCTOR_SYMBOL];
       }
 
-      return makeHeapRef(ctor.ctor || Object, () => {
+      return makeLazyLoader(ctor.ctor || Object, () => {
+        this.stats.frozen -= 1;
+        this.stats.live += 1;
+        let failedKey = null;
         try {
           var result = {};
           for (var k in data) {
-            result[k] = this.deserialize(data[k]);
+            result[k] = this.deserializeValue(data[k]);
           }
           if (ctor.deserialize) {
             result = ctor.deserialize(result);
           }
-          Object.defineProperty(result, HEAP_TAG_SYMBOL, {
-            value: tag,
-            enumerable: false,
-          });
           return result;
         } catch (err) {
-          if (name) {
-            throw extendError(err, `(while deserializing ${name})`);
+          if (failedKey) {
+            throw extendError(
+              err,
+              `(while deserializing ${name || "Object"}'s ${failedKey})`,
+            );
           } else {
-            throw err;
+            throw extendError(err, `(while deserializing ${name || "Object"})`);
           }
         }
       });
     }
   }
 
-  serializeArray(arr: Array<any>) {
-    return arr.map(v => this.serialize(v));
+  serializeArray(arr: Array<any>, heap: Heap) {
+    return arr.map(v => this.serializeValue(v, heap));
   }
 
   deserializeArray(arr: Array<any>) {
-    return arr.map(v => this.deserialize(v));
+    this.stats.frozen -= 1;
+    this.stats.live += 1;
+    return arr.map(v => this.deserializeValue(v));
   }
 }
 
@@ -314,7 +348,9 @@ function createProxy(ctor, name, id, data) {
       } else if (prop in target) {
         return target[prop];
       } else {
-        throw new Error(`${name} ${id} is not available (${prop})`);
+        throw new Error(
+          `${name} ${id} is not available (cannot access ${prop})`,
+        );
       }
     },
   });
