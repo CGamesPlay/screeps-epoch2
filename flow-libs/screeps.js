@@ -1,39 +1,39 @@
-const Job = require('../src/jobs/job');
-const Civilization = require('../src/civilization');
+const Job = require("../src/jobs/job");
+const Civilization = require("../src/civilization");
 
 // Globally import lodash
-const lodash = require('./lodash_v3.10.x.js');
+const lodash = require("./lodash_v3.10.x.js");
 declare var _: typeof lodash;
 
 type FindOptions = {
-  filter: (object: RoomObject) => boolean;
+  filter: (object: RoomObject) => boolean,
 };
 
 type FindPathOptions = {
-  ignoreCreeps?: boolean;
-  ignoreDestructibleStructures?: boolean;
-  ignoreRoads?: boolean;
-  costCallback?: (roomName: string, matrix: CostMatrix) => void;
-  ignore?: Array<RoomObject|RoomPosition>;
-  avoid?: Array<RoomObject|RoomPosition>;
-  maxOps?: number;
-  heuristicWeight?: number;
-  serialize?: boolean;
-  maxRooms?: number;
+  ignoreCreeps?: boolean,
+  ignoreDestructibleStructures?: boolean,
+  ignoreRoads?: boolean,
+  costCallback?: (roomName: string, matrix: CostMatrix) => void,
+  ignore?: Array<RoomObject | RoomPosition>,
+  avoid?: Array<RoomObject | RoomPosition>,
+  maxOps?: number,
+  heuristicWeight?: number,
+  serialize?: boolean,
+  maxRooms?: number,
 };
 
 type PathStep = {
-  x: number;
-  y: number;
-  dx: number;
-  dy: number;
-  direction: number;
-}
+  x: number,
+  y: number,
+  dx: number,
+  dy: number,
+  direction: number,
+};
 type Path = Array<PathStep>;
 
 type CostMatrix = any;
 
-type User = { username: string; };
+type User = { username: string };
 
 type ResourceStore = { [key: ResourceType]: number };
 
@@ -46,291 +46,362 @@ type Look = {
 };
 
 type RouteOptions = {
-  routeCallback?: (roomName: string, fromRoomName: string) => number;
+  routeCallback?: (roomName: string, fromRoomName: string) => number,
 };
 
 declare class ScreepsMap {
-  findRoute(from: string|Room, to: string|Room, opts: ?RouteOptions): Array<{ exit: number, room: string }>;
-  getRoomLinearDistance(start: string, end: string, continuous: ?boolean): number;
-  getTerrainAt(x: number, y: number): string;
-  getTerrainAt(target: RoomObject|RoomPosition): string;
-};
+  findRoute(
+    from: string | Room,
+    to: string | Room,
+    opts: ?RouteOptions,
+  ): Array<{ exit: number, room: string }>,
+  getRoomLinearDistance(
+    start: string,
+    end: string,
+    continuous: ?boolean,
+  ): number,
+  getTerrainAt(x: number, y: number): string,
+  getTerrainAt(target: RoomObject | RoomPosition): string,
+}
 
 declare class Market {
-  calcTransactionCost(amount: number, roomName1: string, roomName2: string): number;
-  cancelOrder(orderId: string): number;
-  changeOrderPrice(orderId: string, newPrice: number): number;
-  createOrder(type: string, resourceType: ResourceType, price: number, totalAmount: number, roomName: ?string): number;
-  deal(orderId: string, amount: number, yourRoomName: ?string): number;
-  extendOrder(orderId: string, addAmount: number): number;
+  calcTransactionCost(
+    amount: number,
+    roomName1: string,
+    roomName2: string,
+  ): number,
+  cancelOrder(orderId: string): number,
+  changeOrderPrice(orderId: string, newPrice: number): number,
+  createOrder(
+    type: string,
+    resourceType: ResourceType,
+    price: number,
+    totalAmount: number,
+    roomName: ?string,
+  ): number,
+  deal(orderId: string, amount: number, yourRoomName: ?string): number,
+  extendOrder(orderId: string, addAmount: number): number,
   //getAllOrders(filter: ?Predicate<MarketOrder>): Array<MarketOrder>;
   //getOrderById(id: string): ?MarketOrder;
-};
+}
 
 declare class Room {
-  controller: ?StructureController;
-  energyAvailable: number;
-  energyCapacityAvailable: number;
-  memory: Object;
-  name: string;
-  storage: ?StructureStorage;
+  controller: ?StructureController,
+  energyAvailable: number,
+  energyCapacityAvailable: number,
+  memory: Object,
+  name: string,
+  storage: ?StructureStorage,
 
-  createConstructionSite(x: number, y: number, type: StructureType): number;
-  createConstructionSite(target: RoomObject|RoomPosition, type: StructureType): number;
-  createFlag(x: number, y: number, name: ?string, color: ?number, secondaryCoor: ?number): number|string;
-  createFlag(target: RoomObject|RoomPosition, name: ?string, color: ?number, secondaryCoor: ?number): number|string;
-  find(find: number, opts: ?FindOptions): Array<RoomObject>;
-  getPositionAt(x: number, y:number): RoomPosition;
-  lookAt(x: number, y: number): Array<Look>;
-  lookAt(target: RoomObject|RoomPosition): Array<Look>;
-  lookForAt(type: LookType, x: number, y: number): Array<RoomObject>;
-  lookForAt(type: LookType, target: RoomObject|RoomPosition): Array<RoomObject>;
-  lookForAtArea(type: LookType, top: number, left: number, bottom: number, right: number, asArray: true): Array<RoomObject>;
-  lookForAtArea(type: LookType, top: number, left: number, bottom: number, right: number, asArray: void|false): { [key: number]: { [key: number]: ?Array<RoomObject> } };
+  createConstructionSite(x: number, y: number, type: StructureType): number,
+  createConstructionSite(
+    target: RoomObject | RoomPosition,
+    type: StructureType,
+  ): number,
+  createFlag(
+    x: number,
+    y: number,
+    name: ?string,
+    color: ?number,
+    secondaryCoor: ?number,
+  ): number | string,
+  createFlag(
+    target: RoomObject | RoomPosition,
+    name: ?string,
+    color: ?number,
+    secondaryCoor: ?number,
+  ): number | string,
+  find(find: number, opts: ?FindOptions): Array<RoomObject>,
+  getPositionAt(x: number, y: number): RoomPosition,
+  lookAt(x: number, y: number): Array<Look>,
+  lookAt(target: RoomObject | RoomPosition): Array<Look>,
+  lookForAt(type: LookType, x: number, y: number): Array<RoomObject>,
+  lookForAt(
+    type: LookType,
+    target: RoomObject | RoomPosition,
+  ): Array<RoomObject>,
+  lookForAtArea(
+    type: LookType,
+    top: number,
+    left: number,
+    bottom: number,
+    right: number,
+    asArray: true,
+  ): Array<RoomObject>,
+  lookForAtArea(
+    type: LookType,
+    top: number,
+    left: number,
+    bottom: number,
+    right: number,
+    asArray: void | false,
+  ): { [key: number]: { [key: number]: ?Array<RoomObject> } },
 
   // Monkey patches
-  getHostiles(): Array<Creep>;
-  lookForInRange(look: LookType, pos: RoomPosition, range: number): Array<Look>;
-};
+  getHostiles(): Array<Creep>,
+  lookForInRange(look: LookType, pos: RoomPosition, range: number): Array<Look>,
+}
 
 declare class RoomPosition {
-  x: number;
-  y: number;
-  roomName: string;
+  x: number,
+  y: number,
+  roomName: string,
 
-  constructor(x: number, y: number, roomName: string): RoomPosition;
-  findClosestByRange(find: number): ?RoomObject;
-  findInRange(find: number|Array<RoomPosition|RoomObject>, range: number, opts: ?FindOptions): Array<RoomObject>;
-  findPathTo(x: number, y: number, opts: ?FindPathOptions): Path;
-  findPathTo(target: RoomObject|RoomPosition, opts: ?FindPathOptions): Path;
-  getDirectionTo(x: number, y: number): number;
-  getDirectionTo(target: RoomObject|RoomPosition): number;
-  getRangeTo(x: number, y: number): number;
-  getRangeTo(target: RoomObject|RoomPosition): number;
-  inRangeTo(x: number, y: number, range: number): boolean;
-  inRangeTo(target: RoomObject|RoomPosition, range: number): boolean;
-  isEqualTo(x: number, y: number): boolean;
-  isEqualTo(target: RoomObject|RoomPosition): boolean;
-  isNearTo(x: number, y: number): boolean;
-  isNearTo(target: RoomObject|RoomPosition): boolean;
+  constructor(x: number, y: number, roomName: string): RoomPosition,
+  findClosestByRange(find: number): ?RoomObject,
+  findInRange(
+    find: number | Array<RoomPosition | RoomObject>,
+    range: number,
+    opts: ?FindOptions,
+  ): Array<RoomObject>,
+  findPathTo(x: number, y: number, opts: ?FindPathOptions): Path,
+  findPathTo(target: RoomObject | RoomPosition, opts: ?FindPathOptions): Path,
+  getDirectionTo(x: number, y: number): number,
+  getDirectionTo(target: RoomObject | RoomPosition): number,
+  getRangeTo(x: number, y: number): number,
+  getRangeTo(target: RoomObject | RoomPosition): number,
+  inRangeTo(x: number, y: number, range: number): boolean,
+  inRangeTo(target: RoomObject | RoomPosition, range: number): boolean,
+  isEqualTo(x: number, y: number): boolean,
+  isEqualTo(target: RoomObject | RoomPosition): boolean,
+  isNearTo(x: number, y: number): boolean,
+  isNearTo(target: RoomObject | RoomPosition): boolean,
 
   // Monkey patches
-  static deserialize(str: string): RoomPosition;
+  static deserialize(str: string): RoomPosition,
 
-  nearbyPositions(filter: ?(p: RoomPosition) => boolean): Array<RoomPosition>;
-  serialize(): string;
-};
+  nearbyPositions(filter: ?(p: RoomPosition) => boolean): Array<RoomPosition>,
+  serialize(): string,
+}
 
 declare class RoomObject {
-  id: string;
-  pos: RoomPosition;
-  room: Room;
-  type: LookType;
-};
+  id: string,
+  pos: RoomPosition,
+  room: Room,
+  type: LookType,
+}
 
 declare class Flag extends RoomObject {
-  color: number;
-  memory: Object;
-  name: string;
-  secondaryColor: number;
+  color: number,
+  memory: Object,
+  name: string,
+  secondaryColor: number,
 
-  remove(): number;
-  setColor(color: number, secondaryColor: number): number;
-  setPosition(x: number, y: number): number;
-  setPosition(target: RoomObject|RoomPosition): number;
-};
+  remove(): number,
+  setColor(color: number, secondaryColor: number): number,
+  setPosition(x: number, y: number): number,
+  setPosition(target: RoomObject | RoomPosition): number,
+}
 
 declare class ConstructionSite extends RoomObject {
-  my: boolean;
-  owner: User;
-  progress: number;
-  progressTotal: number;
-  structureType: StructureType;
-};
+  my: boolean,
+  owner: User,
+  progress: number,
+  progressTotal: number,
+  structureType: StructureType,
+}
 
-declare class Mineral extends RoomObject {
-};
+declare class Mineral extends RoomObject {}
 
 declare class Resource extends RoomObject {
-  resourceType: ResourceType;
-  amount: number;
-};
+  resourceType: ResourceType,
+  amount: number,
+}
 
 declare class Source extends RoomObject {
-  energyCapacity: number;
-  energy: number;
-};
+  energyCapacity: number,
+  energy: number,
+}
 
 declare class Structure extends RoomObject {
-  hits: number;
-  hitsMax: number;
-  structureType: StructureType;
-};
+  hits: number,
+  hitsMax: number,
+  structureType: StructureType,
+}
 
 declare class OwnedStructure extends Structure {
-  my: boolean;
-  owner: User;
-};
+  my: boolean,
+  owner: User,
+}
 
 declare class StructureContainer extends OwnedStructure {
-  store: ResourceStore;
-  storeCapacity: number;
-};
+  store: ResourceStore,
+  storeCapacity: number,
+}
 
 declare class StructureController extends OwnedStructure {
-  level: number;
-  progress: number;
-  progressTotal: number;
-  safeMode: number;
-  safeModeAvailable: number;
-  safeModeCooldown: number;
-  ticksToDowngrade: number;
-  upgradeBlocked: number;
+  level: number,
+  progress: number,
+  progressTotal: number,
+  safeMode: number,
+  safeModeAvailable: number,
+  safeModeCooldown: number,
+  ticksToDowngrade: number,
+  upgradeBlocked: number,
 
-  activateSafeMode(): number;
-  unclaim(): number;
-};
+  activateSafeMode(): number,
+  unclaim(): number,
+}
 
 declare class StructureExtension extends OwnedStructure {
-  energy: number;
-  energyCapacity: number;
+  energy: number,
+  energyCapacity: number,
 }
 
 declare class StructureLink extends OwnedStructure {
-  cooldown: number;
-  energy: number;
-  energyCapacity: number;
+  cooldown: number,
+  energy: number,
+  energyCapacity: number,
 
-  transferEnergy(target: StructureLink, amount: ?number): number;
+  transferEnergy(target: StructureLink, amount: ?number): number,
 }
 
 declare class StructureRampart extends OwnedStructure {
-  isPublic: boolean;
-  ticksToDecay: number;
+  isPublic: boolean,
+  ticksToDecay: number,
 
-  setPublic(isPublic: boolean): number;
-};
+  setPublic(isPublic: boolean): number,
+}
 
-declare class StructureRoad extends Structure {
-};
+declare class StructureRoad extends Structure {}
 
 declare class StructureSpawn extends OwnedStructure {
-  energy: number;
-  energyCapacity: number;
-  memory: Object;
-  name: string;
-  spawning: ?{ name: string, needTime: number, remainingTime: number };
+  energy: number,
+  energyCapacity: number,
+  memory: Object,
+  name: string,
+  spawning: ?{ name: string, needTime: number, remainingTime: number },
 
-  createCreep(body: Array<BodyPartType>, name: ?string, memory: any): string|number;
+  createCreep(
+    body: Array<BodyPartType>,
+    name: ?string,
+    memory: any,
+  ): string | number,
 }
 
 declare class StructureStorage extends OwnedStructure {
-  store: ResourceStore;
-  storeCapacity: number;
-};
+  store: ResourceStore,
+  storeCapacity: number,
+}
 
 declare class StructureTerminal extends OwnedStructure {
-  store: ResourceStore;
-  storeCapacity: number;
+  store: ResourceStore,
+  storeCapacity: number,
 }
 
 declare class StructureTower extends OwnedStructure {
-  energy: number;
-  energyCapacity: number;
+  energy: number,
+  energyCapacity: number,
 }
 
 declare var Game: {
   cpu: {
-    limit: number;
-    tickLimit: number;
-    bucket: number;
-    getUsed: () => number;
-  };
-  creeps: { [key: string]: Creep };
-  flags: { [key: string]: Flag };
-  map: ScreepsMap;
-  market: Market;
-  rooms: { [key: string]: Room };
-  spawns: { [key: string]: StructureSpawn };
-  time: number;
+    limit: number,
+    tickLimit: number,
+    bucket: number,
+    getUsed: () => number,
+  },
+  creeps: { [key: string]: Creep },
+  flags: { [key: string]: Flag },
+  map: ScreepsMap,
+  market: Market,
+  rooms: { [key: string]: Room },
+  spawns: { [key: string]: StructureSpawn },
+  time: number,
 
-  getObjectById(id: string): ?RoomObject;
-  notify(message: string, groupInterval: ?number): void;
+  getObjectById(id: string): ?RoomObject,
+  notify(message: string, groupInterval: ?number): void,
 
   // Monkey patches
-  civ: Civilization;
+  civ: Civilization,
 };
 
 declare var RawMemory: {
-  get(): string;
-  set(value: string): void;
+  get(): string,
+  set(value: string): void,
 };
 declare var Memory: Object;
 
 declare class Creep extends RoomObject {
-  name: string;
-  body: Array<BodyPart>;
-  carry: { [key: ResourceType]: number };
-  carryCapacity: number;
-  hits: number;
-  hitsMax: number;
-  memory: Object;
-  ticksToLive: number;
+  name: string,
+  body: Array<BodyPart>,
+  carry: { [key: ResourceType]: number },
+  carryCapacity: number,
+  hits: number,
+  hitsMax: number,
+  memory: Object,
+  ticksToLive: number,
 
-  build(target: ConstructionSite): number;
-  claimController(target: StructureController): number;
-  getActiveBodyparts(type: BodyPartType): number;
-  harvest(target: Source|Mineral): number;
-  moveTo(target: RoomObject|RoomPosition): number;
-  move(direction: number): number;
-  pickup(target: Resource): number;
-  rangedAttack(target: Creep|Structure): number;
-  rangedMassAttack(): number;
-  repair(target: Structure): number;
-  say(message: string, isPublic: ?boolean): number;
-  signController(target: StructureController, text: string): number;
-  transfer(target: Creep|Structure, resourceType: ResourceType, amount: ?number): number;
-  withdraw(target: Structure, resourceType: ResourceType, amount: ?number): number;
+  build(target: ConstructionSite): number,
+  claimController(target: StructureController): number,
+  getActiveBodyparts(type: BodyPartType): number,
+  harvest(target: Source | Mineral): number,
+  moveTo(target: RoomObject | RoomPosition): number,
+  move(direction: number): number,
+  pickup(target: Resource): number,
+  rangedAttack(target: Creep | Structure): number,
+  rangedMassAttack(): number,
+  repair(target: Structure): number,
+  say(message: string, isPublic: ?boolean): number,
+  signController(target: StructureController, text: string): number,
+  suicide(): number,
+  transfer(
+    target: Creep | Structure,
+    resourceType: ResourceType,
+    amount: ?number,
+  ): number,
+  withdraw(
+    target: Structure,
+    resourceType: ResourceType,
+    amount: ?number,
+  ): number,
 
   // Monkey patches
-  displacedByPriority: number;
-  job: ?Job;
-  movePriority: number;
-  starvingFor: ?ResourceType;
-  onlyCarries: ?ResourceType;
-  blockedBy: ?Creep;
+  displacedByPriority: number,
+  job: ?Job,
+  movePriority: number,
+  starvingFor: ?ResourceType,
+  onlyCarries: ?ResourceType,
+  blockedBy: ?Creep,
 
-  blindMoveTo(target: RoomObject|RoomPosition, opts: ?FindPathOptions): number;
-  getPartSummary(): { [key: BodyPartType]: number };
-  onlyCarry(type: ?ResourceType): void;
-};
+  blindMoveTo(
+    target: RoomObject | RoomPosition,
+    opts: ?FindPathOptions,
+  ): number,
+  getPartSummary(): { [key: BodyPartType]: number },
+  onlyCarry(type: ?ResourceType): void,
+}
 
-type PathFinderGoal = RoomPosition|{ pos: RoomPosition, range?: number };
+type PathFinderGoal = RoomPosition | { pos: RoomPosition, range?: number };
 type PathFinderOptions = {
-  roomCallback?: (roomName: string) => CostMatrix|false;
-  plainCost?: number;
-  swampCost?: number;
-  flee?: boolean;
-  maxOps?: number;
-  maxRooms?: number;
-  maxCost?: number;
-  heuristicWeight?: number;
+  roomCallback?: (roomName: string) => CostMatrix | false,
+  plainCost?: number,
+  swampCost?: number,
+  flee?: boolean,
+  maxOps?: number,
+  maxRooms?: number,
+  maxCost?: number,
+  heuristicWeight?: number,
 };
 type PathFinderResult = {
-  path: Array<RoomPosition>;
-  ops: number;
-  cost: number;
-  incomplete: boolean;
+  path: Array<RoomPosition>,
+  ops: number,
+  cost: number,
+  incomplete: boolean,
 };
 
 declare class PathFinder {
-  static search(origin: RoomPosition, goal: PathFinderGoal|Array<PathFinderGoal>, opts: ?PathFinderOptions): PathFinderResult;
-};
+  static search(
+    origin: RoomPosition,
+    goal: PathFinderGoal | Array<PathFinderGoal>,
+    opts: ?PathFinderOptions,
+  ): PathFinderResult,
+}
 
 type BodyPart = {
-  boost: ?string;
-  type: BodyPartType;
-  hits: number;
+  boost: ?string,
+  type: BodyPartType,
+  hits: number,
 };
 
 declare var OK: 0;
@@ -406,9 +477,35 @@ declare var LOOK_CONSTRUCTION_SITES: "constructionSite";
 declare var LOOK_NUKES: "nuke";
 declare var LOOK_TERRAIN: "terrain";
 
-type LookType = "creep"|"energy"|"resource"|"source"|"mineral"|"structure"|"flag"|"constructionSite"|"nuke"|"terrain";
+type LookType =
+  | "creep"
+  | "energy"
+  | "resource"
+  | "source"
+  | "mineral"
+  | "structure"
+  | "flag"
+  | "constructionSite"
+  | "nuke"
+  | "terrain";
 
-declare var OBSTACLE_OBJECT_TYPES: ["spawn", "creep", "wall", "source", "constructedWall", "extension", "link", "storage", "tower", "observer", "powerSpawn", "powerBank", "lab", "terminal","nuker"];
+declare var OBSTACLE_OBJECT_TYPES: [
+  "spawn",
+  "creep",
+  "wall",
+  "source",
+  "constructedWall",
+  "extension",
+  "link",
+  "storage",
+  "tower",
+  "observer",
+  "powerSpawn",
+  "powerBank",
+  "lab",
+  "terminal",
+  "nuker",
+];
 
 declare var MOVE: "move";
 declare var WORK: "work";
@@ -427,7 +524,7 @@ declare var BODYPART_COST: {
   "heal": 250,
   "ranged_attack": 150,
   "tough": 10,
-  "claim": 600
+  "claim": 600,
 };
 type BodyPartType = $Keys<typeof BODYPART_COST>;
 
@@ -475,7 +572,50 @@ declare var RESOURCE_CATALYZED_ZYNTHIUM_ALKALIDE: "XZHO2";
 declare var RESOURCE_CATALYZED_GHODIUM_ACID: "XGH2O";
 declare var RESOURCE_CATALYZED_GHODIUM_ALKALIDE: "XGHO2";
 
-type ResourceType = "energy"|"power"|"H"|"O"|"U"|"L"|"K"|"Z"|"X"|"G"|"OH"|"ZK"|"UL"|"UH"|"UO"|"KH"|"KO"|"LH"|"LO"|"ZH"|"ZO"|"GH"|"GO"|"UH2O"|"UHO2"|"KH2O"|"KHO2"|"LH2O"|"LHO2"|"ZH2O"|"ZHO2"|"GH2O"|"GHO2"|"XUH2O"|"XUHO2"|"XKH2O"|"XKHO2"|"XLH2O"|"XLHO2"|"XZH2O"|"XZHO2"|"XGH2O"|"XGHO2";
+type ResourceType =
+  | "energy"
+  | "power"
+  | "H"
+  | "O"
+  | "U"
+  | "L"
+  | "K"
+  | "Z"
+  | "X"
+  | "G"
+  | "OH"
+  | "ZK"
+  | "UL"
+  | "UH"
+  | "UO"
+  | "KH"
+  | "KO"
+  | "LH"
+  | "LO"
+  | "ZH"
+  | "ZO"
+  | "GH"
+  | "GO"
+  | "UH2O"
+  | "UHO2"
+  | "KH2O"
+  | "KHO2"
+  | "LH2O"
+  | "LHO2"
+  | "ZH2O"
+  | "ZHO2"
+  | "GH2O"
+  | "GHO2"
+  | "XUH2O"
+  | "XUHO2"
+  | "XKH2O"
+  | "XKHO2"
+  | "XLH2O"
+  | "XLHO2"
+  | "XZH2O"
+  | "XZHO2"
+  | "XGH2O"
+  | "XGHO2";
 
 declare var WORLD_WIDTH: 162;
 declare var WORLD_HEIGHT: 162;
@@ -536,7 +676,26 @@ declare var LINK_LOSS_RATIO: 0.03;
 declare var STORAGE_CAPACITY: 1000000;
 declare var STORAGE_HITS: 10000;
 
-type StructureType = "spawn"|"extension"|"road"|"constructedWall"|"rampart"|"keeperLair"|"portal"|"controller"|"link"|"storage"|"tower"|"observer"|"powerBank"|"powerSpawn"|"extractor"|"lab"|"terminal"|"container"|"nuker";
+type StructureType =
+  | "spawn"
+  | "extension"
+  | "road"
+  | "constructedWall"
+  | "rampart"
+  | "keeperLair"
+  | "portal"
+  | "controller"
+  | "link"
+  | "storage"
+  | "tower"
+  | "observer"
+  | "powerBank"
+  | "powerSpawn"
+  | "extractor"
+  | "lab"
+  | "terminal"
+  | "container"
+  | "nuker";
 
 declare var STRUCTURE_SPAWN: "spawn";
 declare var STRUCTURE_EXTENSION: "extension";
@@ -558,7 +717,9 @@ declare var STRUCTURE_TERMINAL: "terminal";
 declare var STRUCTURE_CONTAINER: "container";
 declare var STRUCTURE_NUKER: "nuker";
 
-declare var CONTROLLER_STRUCTURES: { [key: StructureType]: { [key: number]: number } };
+declare var CONTROLLER_STRUCTURES: {
+  [key: StructureType]: { [key: number]: number },
+};
 declare var CONSTRUCTION_COST: { [key: StructureType]: number };
 
 /*
@@ -834,7 +995,6 @@ declare var CONTAINER_DECAY_TIME_OWNED: 500;
     },
 */
 
-
 declare var PORTAL_UNSTABLE: number;
 declare var PORTAL_MIN_TIMEOUT: number;
 declare var PORTAL_MAX_TIMEOUT: number;
@@ -843,7 +1003,9 @@ declare var POWER_BANK_RESPAWN_TIME: 50000;
 
 declare var INVADERS_ENERGY_GOAL: 10000;
 
-declare var BOOSTS: { [key: BodyPartType]: { [key: string]: { [key: string]: number } } };
+declare var BOOSTS: {
+  [key: BodyPartType]: { [key: string]: { [key: string]: number } },
+};
 declare var BODYPARTS_ALL: Array<BodyPartType>;
 declare var RESOURCES_ALL: Array<string>;
 declare var COLORS_ALL: Array<number>;
