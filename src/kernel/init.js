@@ -7,6 +7,7 @@ import * as tools from "./tools";
 import main from "../main";
 
 let loadedAt = Game.time;
+let lastTick = 0;
 (function() {
   let now = Game.cpu.getUsed();
   console.log(`[${Game.time}] Script reload took ${Math.round(now)} ms.`);
@@ -19,11 +20,18 @@ let loadedAt = Game.time;
   );
 })();
 
+let marshal: ?Marshal, manager: ?ProcessManager, mainProcess;
+
 export const loop = () => {
-  let marshal: ?Marshal, manager: ?ProcessManager, mainProcess;
   try {
-    marshal = new Marshal(Memory.heap);
-    ({ manager, mainProcess } = marshal.getRoot());
+    if (lastTick === Game.time - 1 && marshal && manager && mainProcess) {
+      console.log(`[${Game.time}] Reuse marshal`);
+    } else {
+      console.log(`[${Game.time}] Deserialize marshal`);
+      marshal = new Marshal(Memory.heap);
+      ({ manager, mainProcess } = marshal.getRoot());
+    }
+    invariant(marshal, "Internal error: marshal disappeared");
 
     if (!manager || (mainProcess && mainProcess.finished())) {
       console.log(`[${Game.time}] {bold}System booting.{/}`);
@@ -50,6 +58,7 @@ export const loop = () => {
         Game.cpu.getUsed() - now,
       )} ms (${JSON.stringify(marshal.stats)}).`,
     );
+    lastTick = Game.time;
   } catch (err) {
     delete Memory.heap;
     throw err;

@@ -5,13 +5,13 @@ import ProcessManager from "../ProcessManager";
 const dump = (): string => {
   const manager = ProcessManager.current;
   let any = false;
-  let result = "ID Name Tasks\n";
+  let result = "ID Name Tasks";
   _.forEach(manager.processes, p => {
     any = true;
-    result += `${p.id} ${p.name} ${p.tasks.length}\n`;
+    result += `\n${p.id} ${p.name} ${p.tasks.length}`;
   });
   if (!any) {
-    result += "No active processes\n";
+    result += "\nNo active processes";
   }
   return result;
 };
