@@ -123,10 +123,11 @@ describe("Marshal", () => {
   });
 
   it("creates missing object references", () => {
-    let base = Object.assign(Object.create(RoomObject.prototype), {
+    let base = Object.assign(Object.create(Creep.prototype), {
       id: "1234",
     });
     let value = reserialize(base);
     expect(isAvailable(value)).toBe(false);
+    expect(value).toBeInstanceOf(Creep);
   });
 });

@@ -227,7 +227,7 @@ export default class Marshal {
           if (
             object instanceof Marshal.knownConstructors[k].ctor &&
             (!ctor ||
-              Marshal.knownConstructors[k].prototype instanceof ctor.ctor)
+              Marshal.knownConstructors[k].ctor.prototype instanceof ctor.ctor)
           ) {
             name = k;
             ctor = Marshal.knownConstructors[name];
@@ -337,9 +337,11 @@ Marshal.registerType(
 
 function createProxy(ctor, name, id, data) {
   var target = Object.assign(
-    Object.create(ctor.prototype),
+    Object.create(
+      ctor.prototype,
+      _.mapValues(data, value => ({ enumerable: true, value })),
+    ),
     ({ inspect: void 0, toString: () => `[${name} ${id} (missing)]` }: any),
-    data,
   );
   return new Proxy(target, {
     get: function(target, prop) {
@@ -352,6 +354,9 @@ function createProxy(ctor, name, id, data) {
           `${name} ${id} is not available (cannot access ${prop})`,
         );
       }
+    },
+    set: function(target, prop, value, receiver) {
+      throw new Error(`${name} ${id} is not available (cannot set ${prop})`);
     },
   });
 }
@@ -370,6 +375,11 @@ Marshal.registerType(
   deserializeRoomObject,
   "@o",
 );
+
+const serializeCreep = obj => ({ name: obj.name });
+const deserializeCreep = data =>
+  Game.creeps[data.name] || createProxy(Creep, "Creep", data.name, data);
+Marshal.registerType(Creep, serializeCreep, deserializeCreep, "@c");
 
 const serializeRoom = room => ({ name: room.name });
 const deserializeRoom = data =>

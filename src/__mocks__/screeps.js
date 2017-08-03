@@ -186,6 +186,7 @@ global.Game = {
   map,
   cpu,
   getObjectById: id => null,
+  creeps: {},
 };
 
 global.RoomPosition = class RoomPosition {
@@ -213,6 +214,10 @@ global.Structure = class Structure extends RoomObject {};
 global.StructureSpawn = global.Spawn = class StructureSpawn extends Structure {};
 
 global.Creep = class Creep extends RoomObject {};
+Object.defineProperty(Creep.prototype, "name", {
+  enumerable: true,
+  get: () => "mock",
+});
 
 global.STRUCTURE_SPAWN = "spawn";
 global.STRUCTURE_EXTENSION = "extension";
